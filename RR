@@ -1,0 +1,139 @@
+import requests
+import pandas as pd
+import datetime
+import os
+
+# Jira configuration
+JIRA_URL = "https://crm.jira.com"
+API_TOKEN = "jdjdjjd"  # Replace with your actual Jira API token
+JQL = "filter in (684848)"
+CUSTOM_FIELD = "customfield_12904"  # How long in this status
+OUTPUT_DIR = "jira_reports"
+FINAL_FILE = os.path.join(OUTPUT_DIR, "Final.xlsx")
+
+# Ensure output directory exists
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
+
+# Get current date for file naming
+today = datetime.date.today()
+date_str = today.strftime("%Y-%m-%d")
+daily_file = os.path.join(OUTPUT_DIR, f"date_{date_str}.xlsx")
+
+# Function to convert milliseconds to weeks
+def ms_to_weeks(ms):
+    try:
+        seconds = int(ms) / 1000
+        weeks = seconds / (7 * 24 * 60 * 60)  # 7 days * 24 hours * 60 minutes * 60 seconds
+        return round(weeks)  # Round to nearest week
+    except (ValueError, TypeError):
+        return 0
+
+# Function to fetch Jira issues
+def fetch_jira_issues():
+    url = f"{JIRA_URL}/rest/api/3/search"
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {API_TOKEN}"
+    }
+    params = {
+        "jql": JQL,
+        "fields": f"project,key,status,{CUSTOM_FIELD}",
+        "maxResults": 1000
+    }
+    issues_data = []
+    
+    start_at = 0
+    while True:
+        params["startAt"] = start_at
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            issues = data.get("issues", [])
+            if not issues:
+                break
+            
+            for issue in issues:
+                fields = issue["fields"]
+                duration_ms = fields.get(CUSTOM_FIELD, 0)
+                weeks = ms_to_weeks(duration_ms)
+                issues_data.append({
+                    "Project": fields["project"]["key"],
+                    "Issue Key": issue["key"],
+                    "Status": fields["status"]["name"],
+                    CUSTOM_FIELD: weeks
+                })
+                
+            start_at += len(issues)
+            if start_at >= data["total"]:
+                break
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching data: {e}")
+            return []
+    
+    return issues_data
+
+# Function to create weekly buckets
+def create_weekly_buckets(issues_data):
+    df = pd.DataFrame(issues_data)
+    if df.empty:
+        return df
+    
+    # Rename customfield_12904 to a readable name for output
+    df = df.rename(columns={CUSTOM_FIELD: "Weeks in Status"})
+    return df
+
+# Function to save daily report
+def save_daily_report(df, date_str):
+    if not df.empty:
+        df.to_excel(daily_file, index=False)
+        print(f"Saved daily report to {daily_file}")
+    else:
+        print("No data to save for daily report")
+
+# Function to update final report
+def update_final_report(df, date_str):
+    if df.empty:
+        print("No data to update in Final.xlsx")
+        return
+    
+    # Aggregate count of issues per project for the date
+    count_df = df.groupby("Project").size().reset_index(name=date_str)
+    
+    # Load or create Final.xlsx
+    if os.path.exists(FINAL_FILE):
+        final_df = pd.read_excel(FINAL_FILE)
+        if date_str not in final_df.columns:
+            final_df[date_str] = pd.NA
+        # Merge new data
+        final_df = final_df.merge(count_df, on="Project", how="outer")
+    else:
+        final_df = count_df
+    
+    # Fill NaN with 0 for counts
+    final_df = final_df.fillna(0)
+    
+    # Save updated Final.xlsx
+    final_df.to_excel(FINAL_FILE, index=False)
+    print(f"Updated {FINAL_FILE}")
+
+# Main execution
+def main():
+    # Fetch data
+    issues_data = fetch_jira_issues()
+    if not issues_data:
+        print("No issues retrieved. Exiting.")
+        return
+    
+    # Process data
+    df = create_weekly_buckets(issues_data)
+    
+    # Save daily report
+    save_daily_report(df, date_str)
+    
+    # Update final report
+    update_final_report(df, date_str)
+
+if __name__ == "__main__":
+    main()
