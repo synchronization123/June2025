@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Management Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .container {
+            max-width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        .filters {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+        }
+        .filter-group {
+            flex: 1;
+            min-width: 150px;
+        }
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #34495e;
+        }
+        .filter-group input, .filter-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        .filter-group input:focus, .filter-group select:focus {
+            border-color: #58BCE2;
+            outline: none;
+        }
+        .buttons {
+            flex: 0;
+            min-width: 100px;
+        }
+        .buttons button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+        #goButton {
+            background-color: #007bff;
+            color: white;
+        }
+        #goButton:hover {
+            background-color: #0056b3;
+        }
+        #resetButton, #refreshButton, #addButton {
+            background-color: #6c757d;
+            color: white;
+        }
+        #resetButton:hover, #refreshButton:hover, #addButton:hover {
+            background-color: #5a6268;
+        }
+        .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .pagination-controls button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .pagination-controls button:hover {
+            background-color: #0056b3;
+        }
+        .pagination-controls button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #pageInfo {
+            font-weight: 500;
+            color: #34495e;
+        }
+        #loading, #error {
+            text-align: center;
+            padding: 20px;
+        }
+        #error {
+            color: #e74c3c;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        th {
+            background-color: #58BCE2;
+            color: white;
+            padding: 15px;
+            border: 1px solid #ddd;
+            text-align: center;
+            font-weight: 500;
+        }
+        td {
+            padding: 15px;
+            border: 1px solid #ddd;
+            vertical-align: middle;
+        }
+        td button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: transform 0.2s ease;
+        }
+        td button:hover {
+            transform: scale(1.1);
+        }
+        td button svg {
+            stroke: #007bff;
+            transition: stroke 0.3s ease;
+        }
+        td button:hover svg {
+            stroke: #0056b3;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            animation: slideIn 0.3s ease-out;
+            transform: translateY(0);
+            transition: transform 0.3s ease;
+            font-size: 18px;
+            font-weight: 500;
+            color: #34495e;
+            text-align: left;
+        }
+        #editModal .modal-content {
+            width: 500px;
+            max-width: 90%;
+        }
+        #statusModal .modal-content {
+            width: 300px;
+            max-width: 90%;
+        }
+        #addModal .modal-content {
+            width: 500px;
+            max-width: 90%;
+        }
+        .modal-content h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+        .modal-content input, .modal-content select, .modal-content textarea {
+            width: 90%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            transition: border-color 0.3s ease;
+        }
+        .modal-content input:focus, .modal-content select:focus, .modal-content textarea:focus {
+            border-color: #58BCE2;
+            outline: none;
+        }
+        .modal-content textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .modal-content .modal-buttons {
+            text-align: right;
+        }
+        .modal-content button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+            margin-left: 10px;
+        }
+        .modal-content #saveEdit, .modal-content #saveStatus, .modal-content #saveAdd {
+            background-color: #007bff;
+            color: white;
+        }
+        .modal-content #saveEdit:hover, .modal-content #saveStatus:hover, .modal-content #saveAdd:hover {
+            background-color: #0056b3;
+        }
+        .modal-content #cancelEdit, .modal-content #cancelStatus, .modal-content #cancelAdd {
+            background-color: #6c757d;
+            color: white;
+        }
+        .modal-content #cancelEdit:hover, .modal-content #cancelStatus:hover, .modal-content #cancelAdd:hover {
+            background-color: #5a6268;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Management Portal</h1>
+        <div class="filters">
+            <div class="filter-group">
+                <label>Sr. No.</label>
+                <input type="text" id="srNoFilter" placeholder="Search Sr. No.">
+            </div>
+            <div class="filter-group">
+                <label>Modality</label>
+                <select id="modalityFilter">
+                    <option value="">All</option>
+                    <option value="Web">Web</option>
+                    <option value="Mobile">Mobile</option>
+                    <option value="Thick Client">Thick Client</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Test Case Title</label>
+                <input type="text" id="titleFilter" placeholder="Search Title">
+            </div>
+            <div class="filter-group">
+                <label>Test Case Description</label>
+                <input type="text" id="descriptionFilter" placeholder="Search Description">
+            </div>
+            <div class="filter-group">
+                <label>Category</label>
+                <select id="commitHashFilter">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>Status</label>
+                <select id="statusFilter">
+                    <option value="Active">Active</option>
+                    <option value="InActive">InActive</option>
+                    <option value="">All</option>
+                </select>
+            </div>
+            <div class="buttons">
+                <button id="goButton">Go</button>
+            </div>
+            <div class="buttons">
+                <button id="resetButton">Reset</button>
+            </div>
+            <div class="buttons">
+                <button id="refreshButton">Refresh</button>
+            </div>
+            <div class="buttons">
+                <button id="addButton">Add</button>
+            </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div class="pagination-controls" id="pagination" style="display: none;">
+                <button id="prevPage">Previous</button>
+                <span id="pageInfo"></span>
+                <button id="nextPage">Next</button>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <label style="margin-right: 10px; line-height: 32px; font-weight: 500; color: #34495e;">Rows per page:</label>
+                <select id="pageSize" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="40">40</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </div>
+        <div id="loading" class="modal">
+            <div class="modal-content">Loading...</div>
+        </div>
+        <div id="error" style="text-align: center; color: #e74c3c; padding: 20px; display: none;"></div>
+        <table id="testTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Sr. No.</th>
+                    <th>Modality</th>
+                    <th>Test Case Title</th>
+                    <th>Test Case Description</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+
+        <!-- Edit Modal -->
+        <div id="editModal" class="modal">
+            <div class="modal-content">
+                <h2>Edit Test Details</h2>
+                <div>
+                    <label>Sr. No.</label>
+                    <input type="text" id="editId" disabled>
+                </div>
+                <div>
+                    <label>Modality</label>
+                    <select id="editModality">
+                        <option value="Web">Web</option>
+                        <option value="Mobile">Mobile</option>
+                        <option value="Thick Client">Thick Client</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Test Case Title</label>
+                    <input type="text" id="editTitle">
+                </div>
+                <div>
+                    <label>Test Case Description</label>
+                    <textarea id="editDescription"></textarea>
+                </div>
+                <div>
+                    <label>Category</label>
+                    <input type="text" id="editCommitHash">
+                </div>
+                <div>
+                    <label>Status</label>
+                    <select id="editStatus">
+                        <option value="Active">Active</option>
+                        <option value="InActive">InActive</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button id="saveEdit">Save</button>
+                    <button id="cancelEdit">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Modal -->
+        <div id="statusModal" class="modal">
+            <div class="modal-content">
+                <h2>Update Status</h2>
+                <div>
+                    <label>Status</label>
+                    <select id="statusSelect">
+                        <option value="Active">Active</option>
+                        <option value="InActive">InActive</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button id="saveStatus">Save</button>
+                    <button id="cancelStatus">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Modal -->
+        <div id="addModal" class="modal">
+            <div class="modal-content">
+                <h2>Add Test Case</h2>
+                <div>
+                    <label>Modality</label>
+                    <select id="addModality">
+                        <option value="Web">Web</option>
+                        <option value="Mobile">Mobile</option>
+                        <option value="Thick Client">Thick Client</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Test Case Title</label>
+                    <input type="text" id="addTitle">
+                </div>
+                <div>
+                    <label>Test Case Description</label>
+                    <textarea id="addDescription"></textarea>
+                </div>
+                <div>
+                    <label>Category</label>
+                    <input type="text" id="addCommitHash">
+                </div>
+                <div class="modal-buttons">
+                    <button id="saveAdd">Save</button>
+                    <button id="cancelAdd">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let pageSize = 10;
+        let filteredData = [];
+        let apiData = [];
+        let csrfToken = '';
+        let currentEditId = null;
+
+        async function fetchCsrfToken() {
+            try {
+                const response = await fetch('https://demo.defectdojo.org/api/key-v2', {
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error('Failed to fetch CSRF token');
+                const text = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/html');
+                const tokenInput = doc.querySelector('input[name="csrfmiddlewaretoken"]');
+                csrfToken = tokenInput ? tokenInput.value : '';
+            } catch (err) {
+                console.error('Error fetching CSRF token:', err);
+            }
+        }
+
+        async function fetchData() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const table = document.getElementById('testTable');
+            const pagination = document.getElementById('pagination');
+            loading.style.display = 'flex';
+            error.style.display = 'none';
+            table.style.display = 'none';
+            pagination.style.display = 'none';
+
+            try {
+                await fetchCsrfToken();
+                const response = await fetch('https://demo.defectdojo.org/api/v2/tests/?engagement=6&tags=testcases', {
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+                apiData = data.results || [];
+                filteredData = [...apiData];
+                updateCommitHashFilter();
+                loading.style.display = 'none';
+                table.style.display = 'table';
+                pagination.style.display = 'flex';
+                renderTable();
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Error fetching data: ' + err.message;
+            }
+        }
+
+        async function fetchTestDetails(id) {
+            try {
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${id}/`, {
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error(`Failed to fetch test details for ID ${id}`);
+                return await response.json();
+            } catch (err) {
+                throw new Error('Error fetching test details: ' + err.message);
+            }
+        }
+
+        function updateCommitHashFilter() {
+            const commitHashFilter = document.getElementById('commitHashFilter');
+            const uniqueCommitHashes = [...new Set(apiData.map(item => item.commit_hash || 'N/A'))].sort();
+            commitHashFilter.innerHTML = '<option value="">All</option>';
+            uniqueCommitHashes.forEach(hash => {
+                const option = document.createElement('option');
+                option.value = hash;
+                option.textContent = hash;
+                commitHashFilter.appendChild(option);
+            });
+        }
+
+        function renderTable() {
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const paginatedData = filteredData.slice(start, end);
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            paginatedData.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.id}</td>
+                    <td>${item.branch_tag || 'N/A'}</td>
+                    <td>${item.title || 'N/A'}</td>
+                    <td>${item.description || 'N/A'}</td>
+                    <td>${item.commit_hash || 'N/A'}</td>
+                    <td>${item.build_id || 'Active'}</td>
+                    <td style="text-align: center;">
+                        <button class="editBtn" data-id="${item.id}" title="Edit"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007bff" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                        <button class="statusBtn" data-id="${item.id}" title="Change Status"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007bff" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages || 1}`;
+            document.getElementById('prevPage').disabled = currentPage === 1;
+            document.getElementById('nextPage').disabled = currentPage === totalPages || totalPages === 0;
+
+            document.querySelectorAll('.editBtn').forEach(btn => {
+                btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+            });
+            document.querySelectorAll('.statusBtn').forEach(btn => {
+                btn.addEventListener('click', () => openStatusModal(btn.dataset.id));
+            });
+        }
+
+        function applyFilters() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'flex';
+
+            const srNo = document.getElementById('srNoFilter').value.trim().toLowerCase();
+            const modality = document.getElementById('modalityFilter').value;
+            const title = document.getElementById('titleFilter').value.trim().toLowerCase();
+            const description = document.getElementById('descriptionFilter').value.trim().toLowerCase();
+            const commitHash = document.getElementById('commitHashFilter').value;
+            const status = document.getElementById('statusFilter').value;
+
+            filteredData = apiData.filter(item => {
+                return (
+                    (!srNo || item.id.toString().includes(srNo)) &&
+                    (!modality || (item.branch_tag || 'N/A') === modality) &&
+                    (!title || (item.title && item.title.toLowerCase().includes(title))) &&
+                    (!description || (item.description && item.description.toLowerCase().includes(description))) &&
+                    (!commitHash || (item.commit_hash || 'N/A') === commitHash) &&
+                    (!status || (item.build_id || 'Active') === status)
+                );
+            });
+
+            currentPage = 1;
+            loading.style.display = 'none';
+            renderTable();
+        }
+
+        async function openEditModal(id) {
+            const item = apiData.find(item => item.id === parseInt(id));
+            if (!item) return;
+
+            currentEditId = id;
+            document.getElementById('editId').value = item.id;
+            document.getElementById('editModality').value = item.branch_tag || 'Web';
+            document.getElementById('editTitle').value = item.title || '';
+            document.getElementById('editDescription').value = item.description || '';
+            document.getElementById('editCommitHash').value = item.commit_hash || '';
+            document.getElementById('editStatus').value = item.build_id || 'Active';
+            document.getElementById('editModal').style.display = 'flex';
+        }
+
+        async function openStatusModal(id) {
+            const item = apiData.find(item => item.id === parseInt(id));
+            if (!item) return;
+
+            currentEditId = id;
+            document.getElementById('statusSelect').value = item.build_id || 'Active';
+            document.getElementById('statusModal').style.display = 'flex';
+        }
+
+        async function saveEdit() {
+            const id = currentEditId;
+            const branch_tag = document.getElementById('editModality').value;
+            const title = document.getElementById('editTitle').value || null;
+            const description = document.getElementById('editDescription').value || null;
+            const commit_hash = document.getElementById('editCommitHash').value || null;
+            const build_id = document.getElementById('editStatus').value;
+
+            try {
+                const testDetails = await fetchTestDetails(id);
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${id}/`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        id,
+                        branch_tag,
+                        title,
+                        description,
+                        commit_hash,
+                        build_id,
+                        target_start: testDetails.target_start,
+                        target_end: testDetails.target_end,
+                        engagement: testDetails.engagement,
+                        lead: testDetails.lead,
+                        test_type: testDetails.test_type,
+                        environment: testDetails.environment
+                    })
+                });
+                if (!response.ok) throw new Error('Failed to update test');
+                const updatedItem = await response.json();
+                const index = apiData.findIndex(item => item.id === parseInt(id));
+                if (index !== -1) {
+                    apiData[index] = updatedItem;
+                    filteredData = [...apiData];
+                    updateCommitHashFilter();
+                    renderTable();
+                }
+                document.getElementById('editModal').style.display = 'none';
+            } catch (err) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Error updating test: ' + err.message;
+            }
+        }
+
+        async function saveStatus() {
+            const id = currentEditId;
+            const build_id = document.getElementById('statusSelect').value;
+
+            try {
+                const testDetails = await fetchTestDetails(id);
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${id}/`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        id,
+                        branch_tag: testDetails.branch_tag,
+                        title: testDetails.title,
+                        description: testDetails.description,
+                        commit_hash: testDetails.commit_hash,
+                        build_id,
+                        target_start: testDetails.target_start,
+                        target_end: testDetails.target_end,
+                        engagement: testDetails.engagement,
+                        lead: testDetails.lead,
+                        test_type: testDetails.test_type,
+                        environment: testDetails.environment
+                    })
+                });
+                if (!response.ok) throw new Error('Failed to update status');
+                const updatedItem = await response.json();
+                const index = apiData.findIndex(item => item.id === parseInt(id));
+                if (index !== -1) {
+                    apiData[index] = updatedItem;
+                    filteredData = [...apiData];
+                    renderTable();
+                }
+                document.getElementById('statusModal').style.display = 'none';
+            } catch (err) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Error updating status: ' + err.message;
+            }
+        }
+
+        function openAddModal() {
+            document.getElementById('addModality').value = 'Web';
+            document.getElementById('addTitle').value = '';
+            document.getElementById('addDescription').value = '';
+            document.getElementById('addCommitHash').value = '';
+            document.getElementById('addModal').style.display = 'flex';
+        }
+
+        async function saveAdd() {
+            const branch_tag = document.getElementById('addModality').value;
+            const title = document.getElementById('addTitle').value || null;
+            const description = document.getElementById('addDescription').value || null;
+            const commit_hash = document.getElementById('addCommitHash').value || null;
+
+            try {
+                const response = await fetch('https://demo.defectdojo.org/api/v2/tests/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        tags: ["testcases"],
+                        test_type_name: 'Web Application Test',
+                        scan_type: 'Web Application Test',
+                        target_start: '2022-01-19T00:00:00Z',
+                        target_end: '2022-01-26T00:00:00Z',
+                        build_id: 'Active',
+                        commit_hash: commit_hash,
+                        branch_tag: branch_tag,
+                        engagement: 6,
+                        lead: 1,
+                        test_type: 5,
+                        environment: 1,
+                        title: title,
+                        description: description
+                    })
+                });
+                if (!response.ok) throw new Error('Failed to add test case');
+                const newItem = await response.json();
+                apiData.push(newItem);
+                filteredData = [...apiData];
+                updateCommitHashFilter();
+                renderTable();
+                document.getElementById('addModal').style.display = 'none';
+            } catch (err) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Error adding test case: ' + err.message;
+            }
+        }
+
+        document.getElementById('goButton').addEventListener('click', applyFilters);
+        document.getElementById('resetButton').addEventListener('click', () => {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'flex';
+
+            document.getElementById('srNoFilter').value = '';
+            document.getElementById('modalityFilter').value = '';
+            document.getElementById('titleFilter').value = '';
+            document.getElementById('descriptionFilter').value = '';
+            document.getElementById('commitHashFilter').value = '';
+            document.getElementById('statusFilter').value = 'Active';
+            filteredData = [...apiData];
+            currentPage = 1;
+            loading.style.display = 'none';
+            renderTable();
+        });
+
+        document.getElementById('refreshButton').addEventListener('click', () => {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'flex';
+            fetchData();
+        });
+
+        document.getElementById('addButton').addEventListener('click', openAddModal);
+
+        document.getElementById('pageSize').addEventListener('change', (e) => {
+            pageSize = parseInt(e.target.value);
+            currentPage = 1;
+            renderTable();
+        });
+
+        document.getElementById('prevPage').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTable();
+            }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', () => {
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTable();
+            }
+        });
+
+        document.getElementById('cancelEdit').addEventListener('click', () => {
+            document.getElementById('editModal').style.display = 'none';
+        });
+
+        document.getElementById('saveEdit').addEventListener('click', saveEdit);
+
+        document.getElementById('cancelStatus').addEventListener('click', () => {
+            document.getElementById('statusModal').style.display = 'none';
+        });
+
+        document.getElementById('saveStatus').addEventListener('click', saveStatus);
+
+        document.getElementById('cancelAdd').addEventListener('click', () => {
+            document.getElementById('addModal').style.display = 'none';
+        });
+
+        document.getElementById('saveAdd').addEventListener('click', saveAdd);
+
+        // Fetch data on page load
+        fetchData();
+    </script>
+</body>
+</html>

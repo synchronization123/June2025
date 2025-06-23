@@ -1,0 +1,2195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engagement-Tests Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+            height: 100vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .container {
+            max-width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        .status-card {
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .status-card strong {
+            font-weight: 700;
+            margin: 0 5px;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #ffffff;
+        }
+        .filter-group {
+            flex: 1;
+            min-width: 150px;
+            position: relative;
+        }
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #34495e;
+        }
+        .filter-group input, .filter-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        .filter-group input:focus, .filter-group select:focus {
+            border-color: #58BCE2;
+            outline: none;
+        }
+        .buttons {
+            flex: 0;
+            min-width: 100px;
+        }
+        .buttons button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+        #goButton, #mapButton, #viewMappedButton {
+            background-color: #007bff;
+            color: white;
+        }
+        #goButton:hover, #mapButton:hover, #viewMappedButton:hover {
+            background-color: #0056b3;
+        }
+        #resetButton, #refreshButton, #newTestButton {
+            background-color: #6c757d;
+            color: white;
+        }
+        #resetButton:hover, #refreshButton:hover, #newTestButton:hover {
+            background-color: #5a6268;
+        }
+        .custom-select {
+            position: relative;
+            width: 100%;
+        }
+        .custom-select .trigger {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23333' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") no-repeat right 10px center;
+            background-size: 12px;
+            box-sizing: border-box;
+            appearance: none;
+        }
+        .custom-select .dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .custom-select .dropdown.active {
+            display: block;
+        }
+        .custom-select .search-box {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        .custom-select .dropdown-results div {
+            padding: 8px;
+            cursor: pointer;
+            color: #333;
+            box-sizing: border-box;
+        }
+        .custom-select .dropdown-results div:hover {
+            background-color: #f0f0f0;
+        }
+        .custom-select .dropdown-results .no-results {
+            padding: 8px;
+            color: #888;
+            cursor: default;
+        }
+        .pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .pagination-controls button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .pagination-controls button:hover {
+            background-color: #0056b3;
+        }
+        .pagination-controls button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #pageInfo, #modalPageInfo, #mappedPageInfo {
+            font-weight: 500;
+            color: #34495e;
+        }
+        #loading, #modalLoading, #mappedLoading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        #error, #modalError, #mappedError {
+            text-align: center;
+            color: #e74c3c;
+            padding: 20px;
+            display: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: none;
+        }
+        th {
+            background-color: #58BCE2;
+            color: white;
+            padding: 15px;
+            border: 1px solid #ddd;
+            text-align: center;
+            font-weight: 500;
+        }
+        td {
+            padding: 15px;
+            border: 1px solid #ddd;
+            vertical-align: middle;
+            text-align: center;
+        }
+        td select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        td select:disabled {
+            background-color: #f0f0f0;
+            cursor: not-allowed;
+        }
+        td button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            margin: 0 5px;
+        }
+        td button.delete {
+            background-color: #dc3545;
+        }
+        td button.delete:hover {
+            background-color: #c82333;
+        }
+        td button:hover {
+            background-color: #0056b3;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+        }
+        .modal-content {
+            background-color: white;
+            margin: 0;
+            padding: 20px;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .modal-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .modal-header h3 {
+            margin: 0;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #333;
+        }
+        .modal-filters {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #ffffff;
+        }
+        .modal-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .modal-table th, .modal-table td {
+            padding: 15px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        .modal-table th {
+            background-color: #58BCE2;
+            color: white;
+            font-weight: 500;
+        }
+        .modal-table td.justify {
+            text-align: justify;
+        }
+        .delete-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 3000;
+        }
+        .delete-modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            text-align: center;
+        }
+        .delete-modal-content h3 {
+            margin: 0 0 20px;
+            color: #2c3e50;
+            font-weight: 700;
+        }
+        .delete-modal-content p {
+            margin: 0 0 20px;
+            color: #333;
+        }
+        .delete-modal-content button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 10px;
+            font-weight: 500;
+        }
+        .delete-modal-content .confirm-delete {
+            background-color: #dc3545;
+            color: white;
+        }
+        .delete-modal-content .confirm-delete:hover {
+            background-color: #c82333;
+        }
+        .delete-modal-content .cancel-delete {
+            background-color: #6c757d;
+            color: white;
+        }
+        .delete-modal-content .cancel-delete:hover {
+            background-color: #5a6268;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            padding: 15px 20px;
+            border-radius: 6px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            animation: fadeIn 0.3s, fadeOut 0.3s 4.7s forwards;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            max-width: 300px;
+        }
+        .toast.success {
+            background-color: #28a745;
+        }
+        .toast.error {
+            background-color: #dc3545;
+        }
+        .toast.warning {
+            background-color: #ffc107;
+            color: #333;
+        }
+        .toast .icon {
+            margin-right: 10px;
+            font-size: 18px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+<style>
+    .top-nav {
+        background-color: #2c3e50;
+        padding: 10px 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 35%; /* Restrict to left half of the screen */
+        z-index: 3000;
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        box-sizing: border-box;
+    }
+    .top-nav .nav-item {
+        position: relative;
+        margin-right: 15px; /* Reduced margin for better fit in half-width */
+    }
+    .top-nav .nav-link {
+        color: white;
+        text-decoration: none;
+        font-family: 'Roboto', sans-serif;
+        font-weight: 500;
+        font-size: 14px; /* Slightly smaller font for compact layout */
+        padding: 8px;
+        display: block;
+        transition: background-color 0.3s ease;
+    }
+    .top-nav .nav-link:hover {
+        background-color: #34495e;
+        border-radius: 4px;
+    }
+    .top-nav .dropdown-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        min-width: 140px;
+        z-index: 1000;
+    }
+    .top-nav .dropdown-menu.active {
+        display: block;
+    }
+    .top-nav .dropdown-menu a {
+        color: #333;
+        text-decoration: none;
+        font-family: 'Roboto', sans-serif;
+        font-size: 13px;
+        padding: 8px 12px;
+        display: block;
+        transition: background-color 0.3s ease;
+    }
+    .top-nav .dropdown-menu a:hover {
+        background-color: #f0f0f0;
+    }
+    .top-nav .dropdown-menu .sub-dropdown {
+        position: relative;
+    }
+    .top-nav .dropdown-menu .sub-dropdown-menu {
+        display: none;
+        position: absolute;
+        left: 100%;
+        top: 0;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        min-width: 140px;
+    }
+    .top-nav .dropdown-menu .sub-dropdown:hover .sub-dropdown-menu {
+        display: block;
+    }
+    .container {
+        margin-top: 60px; /* Ensure content is not hidden under fixed nav */
+    }
+</style>
+
+<div class="top-nav">
+    <div class="nav-item">
+        <a href="#" class="nav-link">MCR</a>
+        <div class="dropdown-menu" id="mcrDropdown">
+            <a href="#" onclick="showToast('MCR Dashboard clicked', 'warning')">Dashboard</a>
+            <a href="#" onclick="showToast('Versions List clicked', 'warning')">Versions List</a>
+            <div class="sub-dropdown">
+                <a href="#" class="sub-dropdown-trigger">Jiras</a>
+                <div class="sub-dropdown-menu">
+                    <a href="#" onclick="showToast('MCR Jiras Tests clicked', 'warning')">Tests</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="nav-item">
+        <a href="#" class="nav-link">Patches</a>
+        <div class="dropdown-menu" id="patchesDropdown">
+            <a href="#" onclick="showToast('Patches Dashboard clicked', 'warning')">Dashboard</a>
+            <a href="#" onclick="showToast('Patches List clicked', 'warning')">Patches List</a>
+            <div class="sub-dropdown">
+                <a href="#" class="sub-dropdown-trigger">Jiras</a>
+                <div class="sub-dropdown-menu">
+                    <a href="#" onclick="showToast('Patches Jiras Tests clicked', 'warning')">Tests</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="nav-item">
+        <a href="#" class="nav-link">VAPT</a>
+        <div class="dropdown-menu" id="vaptDropdown">
+            <a href="#" onclick="showToast('VAPT Dashboard clicked', 'warning')">Dashboard</a>
+            <a href="#" onclick="showToast('VAPT List clicked', 'warning')">VAPT List</a>
+            <div class="sub-dropdown">
+                <a href="#" class="sub-dropdown-trigger">Manual</a>
+                <div class="sub-dropdown-menu">
+                    <a href="#" onclick="showToast('VAPT Manual Tests clicked', 'warning')">Tests</a>
+                </div>
+            </div>
+            <div class="sub-dropdown">
+                <a href="#" class="sub-dropdown-trigger">Code Review</a>
+                <div class="sub-dropdown-menu">
+                    <a href="#" onclick="showToast('VAPT Code Review Tests clicked', 'warning')">Tests</a>
+                </div>
+            </div>
+            <div class="sub-dropdown">
+                <a href="#" class="sub-dropdown-trigger">Burp</a>
+                <div class="sub-dropdown-menu">
+                    <a href="#" onclick="showToast('VAPT Burp Tests clicked', 'warning')">Tests</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="nav-item">
+        <a href="#" class="nav-link">Contrast</a>
+        <div class="dropdown-menu" id="contrastDropdown">
+            <a href="#" onclick="showToast('Contrast Dashboard clicked', 'warning')">Dashboard</a>
+            <a href="#" onclick="showToast('Contrast List clicked', 'warning')">List</a>
+        </div>
+    </div>
+    <div class="nav-item">
+        <a href="#" class="nav-link">SonarQube</a>
+        <div class="dropdown-menu" id="sonarqubeDropdown">
+            <a href="#" onclick="showToast('SonarQube Dashboard clicked', 'warning')">Dashboard</a>
+            <a href="#" onclick="showToast('SonarQube List clicked', 'warning')">List</a>
+        </div>
+    </div>
+    <div class="nav-item">
+        <a href="#" class="nav-link">Plugin</a>
+        <div class="dropdown-menu" id="pluginDropdown">
+            <a href="#" onclick="showToast('Plugin Dashboard clicked', 'warning')">Dashboard</a>
+            <a href="#" onclick="showToast('Plugin List clicked', 'warning')">List</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Handle dropdown menu toggling
+    document.querySelectorAll('.top-nav .nav-item').forEach(item => {
+        const link = item.querySelector('.nav-link');
+        const dropdown = item.querySelector('.dropdown-menu');
+
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Close all other dropdowns
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                if (menu !== dropdown) menu.classList.remove('active');
+            });
+            // Toggle current dropdown
+            dropdown.classList.toggle('active');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!item.contains(e.target)) {
+                dropdown.classList.remove('active');
+            }
+        });
+    });
+</script>
+    <div class="container">
+        <h1>Engagement-Tests Portal</h1>
+        <div class="status-card" id="statusCountCard"></div>
+        <div class="filters">
+            <div class="filter-group custom-select">
+                <label>Engagement Name</label>
+                <input type="text" class="trigger" id="engagementTrigger" placeholder="Select Engagement" readonly>
+                <div class="dropdown" id="engagementDropdown">
+                    <input type="text" class="search-box" id="engagementSearch" placeholder="Search Engagement">
+                    <div class="dropdown-results" id="engagementResults"></div>
+                </div>
+                <input type="hidden" id="engagementId" value="">
+            </div>
+            <div class="filter-group custom-select">
+                <label>Version</label>
+                <input type="text" class="trigger" id="versionTrigger" placeholder="Select Version" readonly>
+                <div class="dropdown" id="versionDropdown">
+                    <input type="text" class="search-box" id="versionSearch" placeholder="Search Version">
+                    <div class="dropdown-results" id="versionResults"></div>
+                </div>
+                <input type="hidden" id="version" value="">
+            </div>
+            <div class="filter-group">
+                <label>Jira ID</label>
+                <input type="text" id="jiraIdFilter" placeholder="Search Jira ID">
+            </div>
+            <div class="filter-group custom-select">
+                <label>Issue Type</label>
+                <input type="text" class="trigger" id="issueTypeTrigger" placeholder="Select Issue Type" readonly>
+                <div class="dropdown" id="issueTypeDropdown">
+                    <input type="text" class="search-box" id="issueTypeSearch" placeholder="Search Issue Type">
+                    <div class="dropdown-results" id="issueTypeResults"></div>
+                </div>
+                <input type="hidden" id="issueType" value="">
+            </div>
+            <div class="filter-group custom-select">
+                <label>Jira Status</label>
+                <input type="text" class="trigger" id="jiraStatusTrigger" placeholder="Select Jira Status" readonly>
+                <div class="dropdown" id="jiraStatusDropdown">
+                    <input type="text" class="search-box" id="jiraStatusSearch" placeholder="Search Jira Status">
+                    <div class="dropdown-results" id="jiraStatusResults"></div>
+                </div>
+                <input type="hidden" id="jiraStatus" value="">
+            </div>
+            <div class="filter-group custom-select">
+                <label>Analysis Status</label>
+                <input type="text" class="trigger" id="analysisStatusTrigger" placeholder="Select Analysis Status" readonly>
+                <div class="dropdown" id="analysisStatusDropdown">
+                    <input type="text" class="search-box" id="analysisStatusSearch" placeholder="Search Analysis Status">
+                    <div class="dropdown-results" id="analysisStatusResults"></div>
+                </div>
+                <input type="hidden" id="analysisStatus" value="">
+            </div>
+            <div class="filter-group custom-select">
+                <label>Assigned To</label>
+                <input type="text" class="trigger" id="assignedToTrigger" placeholder="Select Assigned To" readonly>
+                <div class="dropdown" id="assignedToDropdown">
+                    <input type="text" class="search-box" id="assignedToSearch" placeholder="Search Assigned To">
+                    <div class="dropdown-results" id="assignedToResults"></div>
+                </div>
+                <input type="hidden" id="assignedTo" value="">
+            </div>
+            <div class="filter-group custom-select">
+                <label>Type</label>
+                <input type="text" class="trigger" id="typeTrigger" placeholder="Select Type" readonly>
+                <div class="dropdown" id="typeDropdown">
+                    <input type="text" class="search-box" id="typeSearch" placeholder="Search Type">
+                    <div class="dropdown-results" id="typeResults"></div>
+                </div>
+                <input type="hidden" id="type" value="">
+            </div>
+            <div class="buttons">
+                <button id="goButton">Go</button>
+            </div>
+            <div class="buttons">
+                <button id="resetButton">Reset</button>
+            </div>
+            <div class="buttons">
+                <button id="refreshButton">Refresh</button>
+            </div>
+            <div class="buttons">
+                <button id="newTestButton">New Test</button>
+            </div>
+        </div>
+        <div class="pagination-controls" id="pagination" style="display: none;">
+            <button id="prevPage">Previous</button>
+            <span id="pageInfo">Page 1 of 1</span>
+            <button id="nextPage">Next</button>
+        </div>
+        <div id="loading">Loading...</div>
+        <div id="error"></div>
+        <table id="testTable">
+            <thead>
+                <tr>
+                    <th>Dojo Test ID</th>
+                    <th>Engagement Name</th>
+                    <th>Description</th>
+                    <th>Version</th>
+                    <th>Jira ID</th>
+                    <th>Issue Type</th>
+                    <th>Jira Status</th>
+                    <th>Analysis Status</th>
+                    <th>Assigned To</th>
+                    <th>Type</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+        <div class="toast-container" id="toastContainer"></div>
+
+        <!-- Test Case Modal -->
+        <div id="testCaseModal" class="modal">
+            <div class="modal-content">
+                <span class="close">×</span>
+                <div class="modal-header">
+                    <h3 id="modalJiraId"></h3>
+                </div>
+                <div class="modal-filters">
+                    <div class="filter-group">
+                        <label>Sr. No.</label>
+                        <input type="text" id="srNoFilter" placeholder="Search Sr. No.">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Modality</label>
+                        <input type="text" class="trigger" id="modalityTrigger" placeholder="Select Modality" readonly>
+                        <div class="dropdown" id="modalityDropdown">
+                            <input type="text" class="search-box" id="modalitySearch" placeholder="Search Modality">
+                            <div class="dropdown-results" id="modalityResults"></div>
+                        </div>
+                        <input type="hidden" id="modality" value="">
+                    </div>
+                    <div class="filter-group">
+                        <label>Test Case Title</label>
+                        <input type="text" id="titleFilter" placeholder="Search Test Case Title">
+                    </div>
+                    <div class="filter-group">
+                        <label>Test Case Description</label>
+                        <input type="text" id="descriptionFilter" placeholder="Search Test Case Description">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Category</label>
+                        <input type="text" class="trigger" id="categoryTrigger" placeholder="Select Category" readonly>
+                        <div class="dropdown" id="categoryDropdown">
+                            <input type="text" class="search-box" id="categorySearch" placeholder="Search Category">
+                            <div class="dropdown-results" id="categoryResults"></div>
+                        </div>
+                        <input type="hidden" id="category" value="">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Analysis Status</label>
+                        <input type="text" class="trigger" id="testCaseAnalysisStatusTrigger" placeholder="Select Analysis Status" readonly>
+                        <div class="dropdown" id="testCaseAnalysisStatusDropdown">
+                            <input type="text" class="search-box" id="testCaseAnalysisStatusSearch" placeholder="Search Analysis Status">
+                            <div class="dropdown-results" id="testCaseAnalysisStatusResults"></div>
+                        </div>
+                        <input type="hidden" id="testCaseAnalysisStatus" value="">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Mapping Status</label>
+                        <input type="text" class="trigger" id="mappingStatusTrigger" placeholder="Select Mapping Status" readonly>
+                        <div class="dropdown" id="mappingStatusDropdown">
+                            <input type="text" class="search-box" id="mappingStatusSearch" placeholder="Search Mapping Status">
+                            <div class="dropdown-results" id="mappingStatusResults"></div>
+                        </div>
+                        <input type="hidden" id="mappingStatus" value="Mapped">
+                    </div>
+                    <div class="buttons">
+                        <button id="modalGoButton">Go</button>
+                    </div>
+                    <div class="buttons">
+                        <button id="modalResetButton">Reset</button>
+                    </div>
+                    <div class="buttons">
+                        <button id="modalRefreshButton">Refresh</button>
+                    </div>
+                    <div class="buttons" id="modalMapButtonContainer" style="display: block;">
+                        <button id="mapButton">Map</button>
+                    </div>
+                </div>
+                <div class="pagination-controls" id="modalPagination" style="display: none;">
+                    <select id="pageSizeSelect">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="40">40</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                    <button id="modalPrevPage">Previous</button>
+                    <span id="modalPageInfo">Page 1 of 1</span>
+                    <button id="modalNextPage">Next</button>
+                </div>
+                <div id="modalLoading">Loading...</div>
+                <div id="modalError"></div>
+                <table class="modal-table" id="testCaseTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllCheckbox"></th>
+                            <th>Sr. No.</th>
+                            <th>Modality</th>
+                            <th>Test Case Title</th>
+                            <th>Test Case Description</th>
+                            <th>Category</th>
+                            <th>Analysis Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalTableBody"></tbody>
+                </table>
+                <div class="toast-container" id="modalToastContainer"></div>
+            </div>
+        </div>
+
+        <!-- Mapped Test Cases Modal -->
+        <div id="mappedTestCaseModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeMappedModal()">×</span>
+                <div class="modal-header">
+                    <h3 id="mappedModalJiraId"></h3>
+                </div>
+                <div class="modal-filters">
+                    <div class="filter-group">
+                        <label>Sr. No.</label>
+                        <input type="text" id="mappedSrNoFilter" placeholder="Search Sr. No.">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Modality</label>
+                        <input type="text" class="trigger" id="mappedModalityTrigger" placeholder="Select Modality" readonly>
+                        <div class="dropdown" id="mappedModalityDropdown">
+                            <input type="text" class="search-box" id="mappedModalitySearch" placeholder="Search Modality">
+                            <div class="dropdown-results" id="mappedModalityResults"></div>
+                        </div>
+                        <input type="hidden" id="mappedModality" value="">
+                    </div>
+                    <div class="filter-group">
+                        <label>Test Case Title</label>
+                        <input type="text" id="mappedTitleFilter" placeholder="Search Test Case Title">
+                    </div>
+                    <div class="filter-group">
+                        <label>Test Case Description</label>
+                        <input type="text" id="mappedDescriptionFilter" placeholder="Search Test Case Description">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Category</label>
+                        <input type="text" class="trigger" id="mappedCategoryTrigger" placeholder="Select Category" readonly>
+                        <div class="dropdown" id="mappedCategoryDropdown">
+                            <input type="text" class="search-box" id="mappedCategorySearch" placeholder="Search Category">
+                            <div class="dropdown-results" id="mappedCategoryResults"></div>
+                        </div>
+                        <input type="hidden" id="mappedCategory" value="">
+                    </div>
+                    <div class="filter-group custom-select">
+                        <label>Analysis Status</label>
+                        <input type="text" class="trigger" id="mappedAnalysisStatusTrigger" placeholder="Select Analysis Status" readonly>
+                        <div class="dropdown" id="mappedAnalysisStatusDropdown">
+                            <input type="text" class="search-box" id="mappedAnalysisStatusSearch" placeholder="Search Analysis Status">
+                            <div class="dropdown-results" id="mappedAnalysisStatusResults"></div>
+                        </div>
+                        <input type="hidden" id="mappedAnalysisStatus" value="">
+                    </div>
+                    <div class="buttons">
+                        <button id="mappedGoButton">Go</button>
+                    </div>
+                    <div class="buttons">
+                        <button id="mappedResetButton">Reset</button>
+                    </div>
+                    <div class="buttons">
+                        <button id="mappedRefreshButton">Refresh</button>
+                    </div>
+                </div>
+                <div class="pagination-controls" id="mappedPagination" style="display: none;">
+                    <select id="mappedPageSizeSelect">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="40">40</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                    <button id="mappedPrevPage">Previous</button>
+                    <span id="mappedPageInfo">Page 1 of 1</span>
+                    <button id="mappedNextPage">Next</button>
+                </div>
+                <div id="mappedLoading">Loading...</div>
+                <div id="mappedError"></div>
+                <table class="modal-table" id="mappedTestCaseTable">
+                    <thead>
+                        <tr>
+                            <th>Sr. No.</th>
+                            <th>Modality</th>
+                            <th>Test Case Title</th>
+                            <th>Test Case Description</th>
+                            <th>Category</th>
+                            <th>Analysis Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mappedTableBody"></tbody>
+                </table>
+                <div class=" Ors-container" id="mappedToastContainer"></div>
+            </div>
+        </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div id="deleteConfirmationModal" class="delete-modal">
+            <div class="delete-modal-content">
+                <h3>Confirm Deletion</h3>
+                <p id="deleteConfirmationMessage"></p>
+                <button class="confirm-delete" onclick="deleteTest()">Confirm</button>
+                <button class="cancel-delete" onclick="closeDeleteModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let pageSize = 10;
+        let filteredData = [];
+        let engagementData = [];
+        let testData = [];
+        let envData = [];
+        let usersData = [];
+        let csrfToken = '';
+        const today = new Date('2025-06-23T07:59:00+05:30');
+
+        let modalCurrentPage = 1;
+        let modalPageSize = 10;
+        let modalFilteredData = [];
+        let testCaseData = [];
+        let selectedTestCaseIds = new Set();
+        let testToDelete = null;
+
+        let mappedCurrentPage = 1;
+        let mappedPageSize = 10;
+        let mappedFilteredData = [];
+        let mappedTestCaseData = [];
+
+        // Store event listeners for cleanup
+        const eventListeners = new Map();
+
+        async function fetchCsrfToken() {
+            const response = await fetch('https://demo.defectdojo.org/api/key-v2', { credentials: 'include' });
+            if (!response.ok) throw new Error('Failed to fetch CSRF token');
+            const text = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const tokenInput = doc.querySelector('input[name="csrfmiddlewaretoken"]');
+            csrfToken = tokenInput ? tokenInput.value : '';
+        }
+
+        async function fetchEngagements() {
+            try {
+                await fetchCsrfToken();
+                const response = await fetch('https://demo.defectdojo.org/api/v2/engagements/?active=true&limit=10000', {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch engagements');
+                const data = await response.json();
+                engagementData = data.results || [];
+                populateEngagementDropdown();
+            } catch (err) {
+                console.error('Error fetching engagements:', err);
+                showToast('Error fetching engagements: ' + err.message, 'error');
+            }
+        }
+
+        async function fetchUsers() {
+            try {
+                const response = await fetch('https://demo.defectdojo.org/api/v2/users/', {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch users');
+                const data = await response.json();
+                usersData = data.results || [];
+            } catch (err) {
+                console.error('Error fetching users:', err);
+                showToast('Error fetching users: ' + err.message, 'error');
+            }
+        }
+
+        async function fetchEnvironments() {
+            try {
+                const response = await fetch('https://demo.defectdojo.org/api/v2/development_environments/', {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch environments');
+                const data = await response.json();
+                envData = data.results || [];
+            } catch (err) {
+                console.error('Error fetching environments:', err);
+                showToast('Error fetching environments: ' + err.message, 'error');
+            }
+        }
+
+        function populateEngagementDropdown() {
+            const trigger = document.getElementById('engagementTrigger');
+            const dropdown = document.getElementById('engagementDropdown');
+            const search = document.getElementById('engagementSearch');
+            const results = document.getElementById('engagementResults');
+            const hidden = document.getElementById('engagementId');
+
+            trigger.addEventListener('click', () => {
+                dropdown.classList.add('active');
+                search.focus();
+                updateResults('');
+            });
+
+            search.addEventListener('input', debounce((e) => {
+                updateResults(e.target.value);
+            }, 300));
+
+            function updateResults(value) {
+                results.innerHTML = '';
+                const lowerValue = value.toLowerCase();
+                const matches = engagementData.filter(item => !lowerValue || (item.name && item.name.toLowerCase().includes(lowerValue)));
+                if (matches.length === 0) {
+                    results.innerHTML = '<div class="no-results">No matches found</div>';
+                } else {
+                    matches.forEach(item => {
+                        const div = document.createElement('div');
+                        div.textContent = item.name || 'N/A';
+                        div.dataset.id = item.id;
+                        div.addEventListener('click', () => {
+                            trigger.value = item.name;
+                            hidden.value = item.id;
+                            dropdown.classList.remove('active');
+                            resetFilters();
+                            fetchTests(item.id);
+                        });
+                        results.appendChild(div);
+                    });
+                }
+            }
+
+            document.addEventListener('click', (e) => {
+                if (!dropdown.contains(e.target) && e.target !== trigger) {
+                    dropdown.classList.remove('active');
+                }
+            });
+
+            updateResults('');
+        }
+
+        function resetFilters() {
+            document.getElementById('versionTrigger').value = '';
+            document.getElementById('version').value = '';
+            document.getElementById('jiraIdFilter').value = '';
+            document.getElementById('issueTypeTrigger').value = '';
+            document.getElementById('issueType').value = '';
+            document.getElementById('jiraStatusTrigger').value = '';
+            document.getElementById('jiraStatus').value = '';
+            document.getElementById('analysisStatusTrigger').value = '';
+            document.getElementById('analysisStatus').value = '';
+            document.getElementById('assignedToTrigger').value = '';
+            document.getElementById('assignedTo').value = '';
+            document.getElementById('typeTrigger').value = '';
+            document.getElementById('type').value = '';
+            currentPage = 1;
+        }
+
+        async function fetchTests(engagementId) {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const table = document.getElementById('testTable');
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            table.style.display = 'none';
+
+            try {
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira`, {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch tests');
+                testData = (await response.json()).results || [];
+                filteredData = [...testData];
+                if (testData.length === 0) {
+                    error.style.display = 'block';
+                    error.textContent = 'No tests found for this engagement';
+                    document.getElementById('statusCountCard').innerHTML = '';
+                    document.getElementById('pagination').style.display = 'none';
+                } else {
+                    error.style.display = 'none';
+                    await updateAllTestStatuses(engagementId);
+                    populateDynamicFilters();
+                    updateStatusCounts();
+                    renderTable();
+                    table.style.display = 'table';
+                }
+                loading.style.display = 'none';
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Error fetching tests: ' + err.message;
+                showToast('Error fetching tests: ' + err.message, 'error');
+            }
+        }
+
+        async function refreshTests(engagementId) {
+            try {
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira`, {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to refresh tests');
+                const newData = (await response.json()).results || [];
+                updateTableData(newData);
+                await updateAllTestStatuses(engagementId);
+                showToast('Tests refreshed successfully', 'success');
+            } catch (err) {
+                console.error('Error refreshing tests:', err);
+                showToast(`Error refreshing tests: ${err.message}`, 'error');
+            }
+        }
+
+        async function updateAllTestStatuses(engagementId) {
+            for (const test of testData) {
+                if (test.tags && test.tags.includes('mcr_jira')) {
+                    await updateTestStatusBasedOnTestCases(test.id, test.title, engagementId);
+                }
+            }
+            filteredData = [...testData];
+            populateDynamicFilters();
+            updateStatusCounts();
+            renderTable();
+        }
+
+        async function updateTestStatusBasedOnTestCases(testId, jiraId, engagementId) {
+            try {
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch associated test cases');
+                const associatedTests = (await response.json()).results || [];
+
+                let newStatus = 'Pending';
+                if (associatedTests.length === 0) {
+                    newStatus = 'Pending';
+                } else {
+                    const allPending = associatedTests.every(test => test.version === 'Pending');
+                    const allCompletedOrRejected = associatedTests.every(test => test.version === 'Completed' || test.version === 'Rejected');
+                    if (allPending) {
+                        newStatus = 'Pending';
+                    } else if (allCompletedOrRejected) {
+                        newStatus = 'Completed';
+                    } else {
+                        newStatus = 'In Progress';
+                    }
+                }
+
+                const test = testData.find(item => item.id === parseInt(testId));
+                if (test && test.branch_tag !== newStatus) {
+                    await updateTestField(testId, 'branch_tag', newStatus, false);
+                }
+            } catch (err) {
+                console.error(`Error updating status for test ${testId}:`, err);
+                showToast(`Error updating test status: ${err.message}`, 'error');
+            }
+        }
+
+        function updateTableData(newData) {
+            const tbody = document.getElementById('tableBody');
+            const currentIds = new Set(testData.map(item => item.id));
+            const newIds = new Set(newData.map(item => item.id));
+
+            testData = testData.filter(item => newIds.has(item.id));
+            filteredData = filteredData.filter(item => newIds.has(item.id));
+
+            newData.forEach(newItem => {
+                const index = testData.findIndex(item => item.id === newItem.id);
+                if (index !== -1) {
+                    testData[index] = newItem;
+                    const row = tbody.querySelector(`tr[data-id="${newItem.id}"]`);
+                    if (row) {
+                        const engagementName = engagementData.find(e => e.id === newItem.engagement)?.name || 'N/A';
+                        const envName = newItem.environment ? envData.find(e => e.id === newItem.environment)?.name || 'N/A' : 'N/A';
+                        const leadName = newItem.lead ? `${usersData.find(u => u.id === newItem.lead)?.first_name || ''} ${usersData.find(u => u.id === newItem.lead)?.last_name || ''}`.trim() : 'N/A';
+                        row.innerHTML = `
+                            <td>${newItem.id}</td>
+                            <td>${engagementName}</td>
+                            <td>${newItem.description || 'N/A'}</td>
+                            <td>${newItem.version || 'N/A'}</td>
+                            <td>${newItem.title || 'N/A'}</td>
+                            <td>${newItem.commit_hash || 'N/A'}</td>
+                            <td>${newItem.build_id || 'N/A'}</td>
+                            <td>
+                                <select class="analysis-status-select" data-id="${newItem.id}">
+                                    ${['Pending', 'In Progress', 'On Hold', 'Rejected', 'Completed'].map(option => `<option value="${option}" ${newItem.branch_tag === option ? 'selected' : ''}>${option}</option>`).join('')}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="assigned-to-select" data-id="${newItem.id}">
+                                    ${usersData.map(user => `<option value="${user.id}" ${newItem.lead === user.id ? 'selected' : ''}>${user.first_name} ${user.last_name}</option>`).join('')}
+                                </select>
+                            </td>
+                            <td>${envName}</td>
+                            <td>
+                                <button onclick="openModal(${newItem.id}, '${newItem.title || 'N/A'}')">👁️</button>
+                                <button onclick="openMapModal(${newItem.id}, '${newItem.title || 'N/A'}')">🗺️</button>
+                                <button onclick="openMappedTestCasesModal(${newItem.id}, '${newItem.title || 'N/A'}')">📋</button>
+                                <button class="delete" onclick="confirmDelete(${newItem.id}, '${newItem.title || 'N/A'}')">🗑️</button>
+                            </td>
+                        `;
+                    }
+                } else {
+                    testData.push(newItem);
+                }
+            });
+
+            filteredData = [...testData];
+            applyFilters();
+            populateDynamicFilters();
+            updateStatusCounts();
+            bindTableEvents();
+        }
+
+        function setupSearchableDropdown(triggerId, dropdownId, searchId, resultsId, data, getValue, hiddenId) {
+            const trigger = document.getElementById(triggerId);
+            const dropdown = document.getElementById(dropdownId);
+            const search = document.getElementById(searchId);
+            const results = document.getElementById(resultsId);
+            const hidden = document.getElementById(hiddenId);
+
+            trigger.addEventListener('click', () => {
+                dropdown.classList.add('active');
+                search.focus();
+                updateResults('');
+            });
+
+            search.addEventListener('input', debounce((e) => {
+                updateResults(e.target.value);
+            }, 300));
+
+            function updateResults(value) {
+                results.innerHTML = '';
+                const lowerValue = value.toLowerCase();
+                const matches = data.filter(item => !lowerValue || getValue(item).toLowerCase().includes(lowerValue));
+                if (matches.length === 0) {
+                    results.innerHTML = '<div class="no-results">No matches found</div>';
+                } else {
+                    matches.forEach(item => {
+                        const div = document.createElement('div');
+                        div.textContent = getValue(item);
+                        div.dataset.value = item;
+                        div.addEventListener('click', () => {
+                            trigger.value = getValue(item);
+                            hidden.value = item;
+                            dropdown.classList.remove('active');
+                            if (triggerId === 'testCaseAnalysisStatusTrigger' || triggerId === 'mappingStatusTrigger' || triggerId === 'mappedAnalysisStatusTrigger') {
+                                if (triggerId.includes('mapped')) applyMappedFilters();
+                                else applyModalFilters();
+                            } else {
+                                applyFilters();
+                            }
+                        });
+                        results.appendChild(div);
+                    });
+                }
+            }
+
+            document.addEventListener('click', (e) => {
+                if (!dropdown.contains(e.target) && e.target !== trigger) {
+                    dropdown.classList.remove('active');
+                }
+            });
+
+            updateResults('');
+        }
+
+        function populateDynamicFilters() {
+            const issueTypes = [...new Set(testData.map(item => item.commit_hash || 'N/A'))];
+            const jiraStatuses = [...new Set(testData.map(item => item.build_id || 'N/A'))];
+            const analysisStatuses = ['Pending', 'In Progress', 'On Hold', 'Rejected', 'Completed'];
+            const assignedTos = [...new Set(testData.map(item => item.lead ? usersData.find(u => u.id === item.lead)?.id : null).filter(id => id !== null).map(id => {
+                const user = usersData.find(u => u.id === id);
+                return user ? `${user.first_name} ${user.last_name}`.trim() : 'N/A';
+            }))];
+            const types = [...new Set(testData.map(item => item.environment ? envData.find(e => e.id === item.environment)?.name || 'N/A' : 'N/A'))];
+
+            setupSearchableDropdown('versionTrigger', 'versionDropdown', 'versionSearch', 'versionResults', testData, item => item.version || 'N/A', 'version');
+            setupSearchableDropdown('issueTypeTrigger', 'issueTypeDropdown', 'issueTypeSearch', 'issueTypeResults', issueTypes, item => item, 'issueType');
+            setupSearchableDropdown('jiraStatusTrigger', 'jiraStatusDropdown', 'jiraStatusSearch', 'jiraStatusResults', jiraStatuses, item => item, 'jiraStatus');
+            setupSearchableDropdown('analysisStatusTrigger', 'analysisStatusDropdown', 'analysisStatusSearch', 'analysisStatusResults', analysisStatuses, item => item, 'analysisStatus');
+            setupSearchableDropdown('assignedToTrigger', 'assignedToDropdown', 'assignedToSearch', 'assignedToResults', assignedTos, item => item, 'assignedTo');
+            setupSearchableDropdown('typeTrigger', 'typeDropdown', 'typeSearch', 'typeResults', types, item => item, 'type');
+        }
+
+        function applyFilters() {
+            const engagementId = document.getElementById('engagementId').value;
+            const version = document.getElementById('version').value;
+            const jiraId = document.getElementById('jiraIdFilter').value.trim().toLowerCase();
+            const issueType = document.getElementById('issueType').value;
+            const jiraStatus = document.getElementById('jiraStatus').value;
+            const analysisStatus = document.getElementById('analysisStatus').value;
+            const assignedTo = document.getElementById('assignedTo').value;
+            const assunto = document.getElementById('type').value;
+
+            filteredData = testData.filter(item => {
+                const envName = item.environment ? envData.find(e => e.id === item.environment)?.name || 'N/A' : 'N/A';
+                const leadName = item.lead ? `${usersData.find(u => u.id === item.lead)?.first_name || ''} ${usersData.find(u => u.id === item.lead)?.last_name || ''}`.trim() : 'N/A';
+                return (
+                    (!engagementId || item.engagement === parseInt(engagementId)) &&
+                    (!version || item.version === version) &&
+                    (!jiraId || (item.title && item.title.toLowerCase().includes(jiraId))) &&
+                    (!issueType || item.commit_hash === issueType) &&
+                    (!jiraStatus || item.build_id === jiraStatus) &&
+                    (!analysisStatus || item.branch_tag === analysisStatus) &&
+                    (!assignedTo || leadName === assignedTo) &&
+                    (!assunto || envName === assunto)
+                );
+            });
+
+            currentPage = 1;
+            updateStatusCounts();
+            renderTable();
+        }
+
+        function renderTable() {
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const paginatedData = filteredData.slice(start, end);
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            paginatedData.forEach(item => {
+                const engagementName = engagementData.find(e => e.id === item.engagement)?.name || 'N/A';
+                const envName = item.environment ? envData.find(e => e.id === item.environment)?.name || 'N/A' : 'N/A';
+                const leadName = item.lead ? `${usersData.find(u => u.id === item.lead)?.first_name || ''} ${usersData.find(u => u.id === item.lead)?.last_name || ''}`.trim() : 'N/A';
+                const row = document.createElement('tr');
+                row.dataset.id = item.id;
+                row.innerHTML = `
+                    <td>${item.id}</td>
+                    <td>${engagementName}</td>
+                    <td>${item.description || 'N/A'}</td>
+                    <td>${item.version || 'N/A'}</td>
+                    <td>${item.title || 'N/A'}</td>
+                    <td>${item.commit_hash || 'N/A'}</td>
+                    <td>${item.build_id || 'N/A'}</td>
+                    <td>
+                        <select class="analysis-status-select" data-id="${item.id}">
+                            ${['Pending', 'In Progress', 'On Hold', 'Rejected', 'Completed'].map(option => `<option value="${option}" ${item.branch_tag === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td>
+                        <select class="assigned-to-select" data-id="${item.id}">
+                            ${usersData.map(user => `<option value="${user.id}" ${item.lead === user.id ? 'selected' : ''}>${user.first_name} ${user.last_name}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td>${envName}</td>
+                    <td>
+                        <button onclick="openModal(${item.id}, '${item.title || 'N/A'}')">👁️</button>
+                        <button onclick="openMapModal(${item.id}, '${item.title || 'N/A'}')">🗺️</button>
+                        <button onclick="openMappedTestCasesModal(${item.id}, '${item.title || 'N/A'}')">📋</button>
+                        <button class="delete" onclick="confirmDelete(${item.id}, '${item.title || 'N/A'}')">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            bindTableEvents();
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages || 1}`;
+            document.getElementById('prevPage').disabled = currentPage === 1;
+            document.getElementById('nextPage').disabled = currentPage === totalPages || totalPages === 0;
+            document.getElementById('pagination').style.display = filteredData.length > 0 ? 'flex' : 'none';
+            document.getElementById('testTable').style.display = filteredData.length > 0 ? 'table' : 'none';
+        }
+
+        function bindTableEvents() {
+            eventListeners.forEach((listener, element) => {
+                element.removeEventListener('change', listener);
+            });
+            eventListeners.clear();
+
+            document.querySelectorAll('.analysis-status-select').forEach(select => {
+                const listener = (e) => {
+                    const testId = e.target.dataset.id;
+                    const newStatus = e.target.value;
+                    updateTestField(testId, 'branch_tag', newStatus);
+                };
+                select.addEventListener('change', listener);
+                eventListeners.set(select, listener);
+            });
+
+            document.querySelectorAll('.assigned-to-select').forEach(select => {
+                const listener = (e) => {
+                    const testId = e.target.dataset.id;
+                    const newAssignedToId = e.target.value;
+                    updateTestField(testId, 'lead', newAssignedToId);
+                };
+                select.addEventListener('change', listener);
+                eventListeners.set(select, listener);
+            });
+        }
+
+        async function updateTestField(testId, field, value, updateStatus = true) {
+            try {
+                const test = testData.find(item => item.id === parseInt(testId));
+                if (!test) throw new Error('Test not found');
+
+                const payload = {
+                    id: test.id,
+                    title: test.title || 'Untitled Test',
+                    target_start: test.target_start || '2022-01-19T00:00:00Z',
+                    target_end: test.target_end || '2022-01-19T23:59:59Z',
+                    engagement: test.engagement || null,
+                    lead: field === 'lead' ? parseInt(value) : test.lead || null,
+                    test_type: test.test_type || null,
+                    environment: test.environment || null,
+                    test_type_name: test.test_type_name || 'Default Test Type',
+                    tags: test.tags || [],
+                    description: test.description || '',
+                    commit_hash: test.commit_hash || 'N/A',
+                    build_id: test.build_id || 'N/A',
+                    branch_tag: field === 'branch_tag' ? value : test.branch_tag || 'Pending'
+                };
+
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${testId}/`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Failed to update test');
+                const updatedTest = await response.json();
+                const index = testData.findIndex(item => item.id === parseInt(testId));
+                if (index !== -1) {
+                    testData[index] = updatedTest;
+                    filteredData = [...testData];
+                    if (updateStatus && field === 'branch_tag') {
+                        await updateTestStatusBasedOnTestCases(testId, test.title, test.engagement);
+                    }
+                    populateDynamicFilters();
+                    updateStatusCounts();
+                    renderTable();
+                    showToast('Save successful!', 'success');
+                }
+            } catch (err) {
+                console.error(`Error updating ${field} for test ${testId}:`, err);
+                showToast(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function updateTestCaseField(testCaseId, field, value, isMappedModal = false) {
+            try {
+                const data = isMappedModal ? mappedTestCaseData : testCaseData;
+                const testCase = data.find(item => item.id === parseInt(testCaseId));
+                if (!testCase) throw new Error('Test case not found');
+
+                const payload = {
+                    id: testCase.id,
+                    title: testCase.title || 'Untitled Test Case',
+                    target_start: testCase.target_start || '2022-01-19T00:00:00Z',
+                    target_end: testCase.target_end || '2022-01-19T23:59:59Z',
+                    engagement: testCase.engagement || null,
+                    test_type: testCase.test_type || null,
+                    environment: testCase.environment || null,
+                    test_type_name: testCase.test_type_name || 'Default Test Type',
+                    tags: testCase.tags || [],
+                    description: testCase.description || '',
+                    commit_hash: testCase.commit_hash || 'N/A',
+                    branch_tag: testCase.branch_tag || 'N/A',
+                    version: field === 'version' ? value : testCase.version || 'Pending'
+                };
+
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${testCaseId}/`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error('Failed to update test case');
+                const updatedTestCase = await response.json();
+                const index = data.findIndex(item => item.id === parseInt(testCaseId));
+                if (index !== -1) {
+                    data[index] = updatedTestCase;
+                    if (isMappedModal) {
+                        mappedFilteredData = [...mappedTestCaseData];
+                    } else {
+                        modalFilteredData = [...testCaseData];
+                    }
+                    const jiraId = (isMappedModal ? document.getElementById('mappedModalJiraId') : document.getElementById('modalJiraId')).textContent.replace('Jira ID: ', '');
+                    const testId = document.getElementById(isMappedModal ? 'mappedTestCaseModal' : 'testCaseModal').dataset.testId;
+                    const engagementId = document.getElementById('engagementId').value;
+                    await updateTestStatusBasedOnTestCases(testId, jiraId, engagementId);
+                    if (isMappedModal) applyMappedFilters();
+                    else applyModalFilters();
+                    const toastContainer = isMappedModal ? 'mappedToastContainer' : 'modalToastContainer';
+                    showToast('Test case updated successfully!', 'success', toastContainer);
+                }
+            } catch (err) {
+                console.error(`Error updating ${field} for test case ${testCaseId}:`, err);
+                const toastContainer = isMappedModal ? 'mappedToastContainer' : 'modalToastContainer';
+                showToast(`Error: ${err.message}`, 'error', toastContainer);
+            }
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function updateStatusCounts() {
+            const pendingCount = filteredData.filter(item => item.branch_tag === 'Pending').length;
+            const inProgressCount = filteredData.filter(item => item.branch_tag === 'In Progress').length;
+            const onHoldCount = filteredData.filter(item => item.branch_tag === 'On Hold').length;
+            const rejectedCount = filteredData.filter(item => item.branch_tag === 'Rejected').length;
+            const completedCount = filteredData.filter(item => item.branch_tag === 'Completed').length;
+            const totalCount = pendingCount + inProgressCount + onHoldCount + rejectedCount + completedCount;
+
+            const statusCard = document.getElementById('statusCountCard');
+            statusCard.innerHTML = `<strong>Pending: ${pendingCount}</strong> | <strong>In Progress: ${inProgressCount}</strong> | <strong>On Hold: ${onHoldCount}</strong> | <strong>Rejected: ${rejectedCount}</strong> | <strong>Completed: ${completedCount}</strong> | <strong>TOTAL: ${totalCount}</strong>`;
+        }
+
+        function confirmDelete(testId, testTitle, isTestCase = false, isMappedModal = false) {
+            testToDelete = { id: testId, title: testTitle, isTestCase, isMappedModal };
+            const message = isTestCase
+                ? `Are you sure you want to delete the test case "${testTitle}"? This action cannot be undone.`
+                : `Are you sure you want to delete the test "${testTitle}" and all associated test cases? This action cannot be undone.`;
+            document.getElementById('deleteConfirmationMessage').textContent = message;
+            document.getElementById('deleteConfirmationModal').style.display = 'block';
+        }
+
+        async function deleteTest() {
+            if (!testToDelete) return;
+
+            const { id: testId, isTestCase, isMappedModal } = testToDelete;
+            try {
+                if (isTestCase) {
+                    const jiraId = document.getElementById(isMappedModal ? 'mappedModalJiraId' : 'modalJiraId').textContent.replace('Jira ID: ', '');
+                    const engagementId = document.getElementById('engagementId').value;
+                    const data = isMappedModal ? mappedTestCaseData : testCaseData;
+                    const mappedTest = testData.find(test => test.title === data.find(tc => tc.id === parseInt(testId))?.title && test.tags?.includes('mcr_jira_testcases'));
+                    if (mappedTest) {
+                        const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${mappedTest.id}/`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRFToken': csrfToken },
+                            credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error('Failed to delete mapped test');
+                        const index = testData.findIndex(item => item.id === mappedTest.id);
+                        if (index !== -1) {
+                            testData.splice(index, 1);
+                            filteredData = [...testData];
+                            renderTable();
+                        }
+                        if (!isMappedModal) selectedTestCaseIds.delete(testId);
+                        await updateTestStatusBasedOnTestCases(document.getElementById(isMappedModal ? 'mappedTestCaseModal' : 'testCaseModal').dataset.testId, jiraId, engagementId);
+                        if (isMappedModal) applyMappedFilters();
+                        else applyModalFilters();
+                        const toastContainer = isMappedModal ? 'mappedToastContainer' : 'modalToastContainer';
+                        showToast('Test case deleted successfully', 'success', toastContainer);
+                    }
+                } else {
+                    const test = testData.find(item => item.id === parseInt(testId));
+                    if (!test) throw new Error('Test not found');
+                    const engagementId = test.engagement;
+                    const jiraId = test.title;
+
+                    const associatedResponse = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                        credentials: 'include',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
+                    if (!associatedResponse.ok) throw new Error('Failed to fetch associated test cases');
+                    const associatedTests = (await associatedResponse.json()).results || [];
+
+                    for (const assocTest of associatedTests) {
+                        const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${assocTest.id}/`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRFToken': csrfToken },
+                            credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error(`Failed to delete associated test ${assocTest.id}`);
+                        const index = testData.findIndex(item => item.id === assocTest.id);
+                        if (index !== -1) {
+                            testData.splice(index, 1);
+                        }
+                        selectedTestCaseIds.delete(assocTest.id);
+                    }
+
+                    const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${testId}/`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRFToken': csrfToken },
+                        credentials: 'include'
+                    });
+                    if (!response.ok) throw new Error('Failed to delete test');
+                    const index = testData.findIndex(item => item.id === parseInt(testId));
+                    if (index !== -1) {
+                        testData.splice(index, 1);
+                        filteredData = [...testData];
+                        renderTable();
+                        showToast('Test and associated test cases deleted successfully', 'success');
+                    }
+                }
+            } catch (err) {
+                console.error('Error deleting:', err);
+                const message = isTestCase ? `Error deleting test case: ${err.message}` : `Error deleting test: ${err.message}`;
+                const toastContainer = isMappedModal ? 'mappedToastContainer' : isTestCase ? 'modalToastContainer' : 'toastContainer';
+                showToast(message, 'error', toastContainer);
+            } finally {
+                closeDeleteModal();
+            }
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteConfirmationModal').style.display = 'none';
+            testToDelete = null;
+        }
+
+        document.getElementById('goButton').addEventListener('click', applyFilters);
+        document.getElementById('resetButton').addEventListener('click', () => {
+            resetFilters();
+            filteredData = [...testData];
+            updateStatusCounts();
+            renderTable();
+        });
+        document.getElementById('refreshButton').addEventListener('click', () => {
+            const engagementId = document.getElementById('engagementId').value;
+            if (engagementId) refreshTests(engagementId);
+        });
+        document.getElementById('newTestButton').addEventListener('click', () => {
+            showToast('New Test functionality to be implemented', 'warning');
+        });
+        document.getElementById('prevPage').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTable();
+            }
+        });
+        document.getElementById('nextPage').addEventListener('click', () => {
+            const totalPages = Math.ceil(filteredData.length / pageSize);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTable();
+            }
+        });
+
+        function showToast(message, type, containerId = 'toastContainer') {
+            const container = document.getElementById(containerId);
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            let icon = '';
+            if (type === 'success') icon = '✓';
+            else if (type === 'error') icon = '✗';
+            else if (type === 'warning') icon = '⚠';
+            toast.innerHTML = `<span class="icon">${icon}</span>${message}`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        function openModal(testId, jiraId) {
+            showToast(`View Test Cases for Test ID: ${testId}, Jira ID: ${jiraId}`, 'warning', 'modalToastContainer');
+        }
+
+        function openMapModal(testId, jiraId) {
+            document.getElementById('testCaseModal').style.display = 'block';
+            document.getElementById('modalJiraId').textContent = `Jira ID: ${jiraId}`;
+            document.getElementById('testCaseModal').dataset.testId = testId;
+            selectedTestCaseIds.clear();
+            document.getElementById('mappingStatusTrigger').value = 'Mapped';
+            document.getElementById('mappingStatus').value = 'Mapped';
+            fetchTestCases(testId, jiraId);
+        }
+
+        function openMappedTestCasesModal(testId, jiraId) {
+            document.getElementById('mappedTestCaseModal').style.display = 'block';
+            document.getElementById('mappedModalJiraId').textContent = `Jira ID: ${jiraId}`;
+            document.getElementById('mappedTestCaseModal').dataset.testId = testId;
+            fetchMappedTestCases(testId, jiraId);
+        }
+
+        function closeMappedModal() {
+            document.getElementById('mappedTestCaseModal').style.display = 'none';
+        }
+
+        async function fetchTestCases(testId, jiraId) {
+            const loading = document.getElementById('modalLoading');
+            const error = document.getElementById('modalError');
+            const table = document.getElementById('testCaseTable');
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            table.style.display = 'none';
+
+            try {
+                const response = await fetch('https://demo.defectdojo.org/api/v2/tests/?engagement=6&tags=testcases', {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch test cases');
+                testCaseData = (await response.json()).results || [];
+                modalFilteredData = [...testCaseData];
+
+                const engagementId = document.getElementById('engagementId').value;
+                if (engagementId) {
+                    const mappedResponse = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                        credentials: 'include',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
+                    if (mappedResponse.ok) {
+                        const mappedTests = (await mappedResponse.json()).results || [];
+                        mappedTests.forEach(mappedTest => {
+                            const originalTest = testCaseData.find(tc => tc.title === mappedTest.title);
+                            if (originalTest) selectedTestCaseIds.add(originalTest.id);
+                        });
+                    }
+                }
+
+                populateModalFilters();
+                applyModalFilters();
+                loading.style.display = 'none';
+                table.style.display = 'table';
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Error fetching test cases: ' + err.message;
+                showToast(`Error: ${err.message}`, 'error', 'modalToastContainer');
+            }
+        }
+
+        async function fetchMappedTestCases(testId, jiraId) {
+            const loading = document.getElementById('mappedLoading');
+            const error = document.getElementById('mappedError');
+            const table = document.getElementById('mappedTestCaseTable');
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            table.style.display = 'none';
+
+            try {
+                const engagementId = document.getElementById('engagementId').value;
+                if (!engagementId) throw new Error('No engagement selected');
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to fetch mapped test cases');
+                mappedTestCaseData = (await response.json()).results || [];
+                mappedFilteredData = [...mappedTestCaseData];
+
+                populateMappedFilters();
+                applyMappedFilters();
+                loading.style.display = 'none';
+                table.style.display = mappedTestCaseData.length > 0 ? 'table' : 'none';
+                if (mappedTestCaseData.length === 0) {
+                    error.style.display = 'block';
+                    error.textContent = 'No mapped test cases found';
+                }
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'Error fetching mapped test cases: ' + err.message;
+                showToast(`Error: ${err.message}`, 'error', 'mappedToastContainer');
+            }
+        }
+
+        async function refreshTestCases(testId, jiraId) {
+            try {
+                const response = await fetch('https://demo.defectdojo.org/api/v2/tests/?engagement=6&tags=testcases', {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to refresh test cases');
+                const newTestCaseData = (await response.json()).results || [];
+
+                const engagementId = document.getElementById('engagementId').value;
+                if (engagementId) {
+                    const mappedResponse = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                        credentials: 'include',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
+                    if (mappedResponse.ok) {
+                        const mappedTests = (await mappedResponse.json()).results || [];
+                        const newSelectedTestCaseIds = new Set();
+                        mappedTests.forEach(mappedTest => {
+                            const originalTest = newTestCaseData.find(tc => tc.title === mappedTest.title);
+                            if (originalTest) newSelectedTestCaseIds.add(originalTest.id);
+                        });
+                        selectedTestCaseIds = newSelectedTestCaseIds;
+                    }
+                }
+
+                testCaseData = newTestCaseData;
+                modalFilteredData = [...testCaseData];
+                await updateTestStatusBasedOnTestCases(testId, jiraId, engagementId);
+                applyModalFilters();
+                showToast('Test cases refreshed successfully', 'success', 'modalToastContainer');
+            } catch (err) {
+                console.error('Error refreshing test cases:', err);
+                showToast(`Error refreshing test cases: ${err.message}`, 'error', 'modalToastContainer');
+            }
+        }
+
+        async function refreshMappedTestCases(testId, jiraId) {
+            try {
+                const engagementId = document.getElementById('engagementId').value;
+                if (!engagementId) throw new Error('No engagement selected');
+                const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!response.ok) throw new Error('Failed to refresh mapped test cases');
+                mappedTestCaseData = (await response.json()).results || [];
+                mappedFilteredData = [...mappedTestCaseData];
+                await updateTestStatusBasedOnTestCases(testId, jiraId, engagementId);
+                applyMappedFilters();
+                showToast('Mapped test cases refreshed successfully', 'success', 'mappedToastContainer');
+            } catch (err) {
+                console.error('Error refreshing mapped test cases:', err);
+                showToast(`Error refreshing mapped test cases: ${err.message}`, 'error', 'mappedToastContainer');
+            }
+        }
+
+        function populateModalFilters() {
+            const modalities = ['Web', 'Mobile', 'Thick Client'];
+            const categories = [...new Set(testCaseData.map(item => item.commit_hash || 'N/A'))];
+            const analysisStatuses = ['Pending', 'On Hold', 'Rejected', 'Completed'];
+            const mappingStatuses = ['All', 'Mapped', 'Not Mapped'];
+
+            setupSearchableDropdown('modalityTrigger', 'modalityDropdown', 'modalitySearch', 'modalityResults', modalities, item => item, 'modality');
+            setupSearchableDropdown('categoryTrigger', 'categoryDropdown', 'categorySearch', 'categoryResults', categories, item => item, 'category');
+            setupSearchableDropdown('testCaseAnalysisStatusTrigger', 'testCaseAnalysisStatusDropdown', 'testCaseAnalysisStatusSearch', 'testCaseAnalysisStatusResults', analysisStatuses, item => item, 'testCaseAnalysisStatus');
+            setupSearchableDropdown('mappingStatusTrigger', 'mappingStatusDropdown', 'mappingStatusSearch', 'mappingStatusResults', mappingStatuses, item => item, 'mappingStatus');
+        }
+
+        function populateMappedFilters() {
+            const modalities = ['Web', 'Mobile', 'Thick Client'];
+            const categories = [...new Set(mappedTestCaseData.map(item => item.commit_hash || 'N/A'))];
+            const analysisStatuses = ['Pending', 'On Hold', 'Rejected', 'Completed'];
+
+            setupSearchableDropdown('mappedModalityTrigger', 'mappedModalityDropdown', 'mappedModalitySearch', 'mappedModalityResults', modalities, item => item, 'mappedModality');
+            setupSearchableDropdown('mappedCategoryTrigger', 'mappedCategoryDropdown', 'mappedCategorySearch', 'mappedCategoryResults', categories, item => item, 'mappedCategory');
+            setupSearchableDropdown('mappedAnalysisStatusTrigger', 'mappedAnalysisStatusDropdown', 'mappedAnalysisStatusSearch', 'mappedAnalysisStatusResults', analysisStatuses, item => item, 'mappedAnalysisStatus');
+        }
+
+        function applyModalFilters() {
+            const srNo = document.getElementById('srNoFilter').value.trim();
+            const modality = document.getElementById('modality').value;
+            const title = document.getElementById('titleFilter').value.trim().toLowerCase();
+            const description = document.getElementById('descriptionFilter').value.trim().toLowerCase();
+			            const category = document.getElementById('category').value;
+            const analysisStatus = document.getElementById('testCaseAnalysisStatus').value;
+            const mappingStatus = document.getElementById('mappingStatus').value;
+
+            modalFilteredData = testCaseData.filter(item => {
+                const isMapped = selectedTestCaseIds.has(item.id);
+                return (
+                    (!srNo || item.id.toString().includes(srNo)) &&
+                    (!modality || item.test_type_name === modality) &&
+                    (!title || (item.title && item.title.toLowerCase().includes(title))) &&
+                    (!description || (item.description && item.description.toLowerCase().includes(description))) &&
+                    (!category || item.commit_hash === category) &&
+                    (!analysisStatus || item.version === analysisStatus) &&
+                    (mappingStatus === 'All' || (mappingStatus === 'Mapped' && isMapped) || (mappingStatus === 'Not Mapped' && !isMapped))
+                );
+            });
+
+            modalCurrentPage = 1;
+            renderModalTable();
+        }
+
+        function applyMappedFilters() {
+            const srNo = document.getElementById('mappedSrNoFilter').value.trim();
+            const modality = document.getElementById('mappedModality').value;
+            const title = document.getElementById('mappedTitleFilter').value.trim().toLowerCase();
+            const description = document.getElementById('mappedDescriptionFilter').value.trim().toLowerCase();
+            const category = document.getElementById('mappedCategory').value;
+            const analysisStatus = document.getElementById('mappedAnalysisStatus').value;
+
+            mappedFilteredData = mappedTestCaseData.filter(item => {
+                return (
+                    (!srNo || item.id.toString().includes(srNo)) &&
+                    (!modality || item.test_type_name === modality) &&
+                    (!title || (item.title && item.title.toLowerCase().includes(title))) &&
+                    (!description || (item.description && item.description.toLowerCase().includes(description))) &&
+                    (!category || item.commit_hash === category) &&
+                    (!analysisStatus || item.version === analysisStatus)
+                );
+            });
+
+            mappedCurrentPage = 1;
+            renderMappedTable();
+        }
+
+        function renderModalTable() {
+            const start = (modalCurrentPage - 1) * modalPageSize;
+            const end = start + modalPageSize;
+            const paginatedData = modalFilteredData.slice(start, end);
+
+            const tbody = document.getElementById('modalTableBody');
+            tbody.innerHTML = '';
+
+            paginatedData.forEach(item => {
+                const row = document.createElement('tr');
+                row.dataset.id = item.id;
+                row.innerHTML = `
+                    <td><input type="checkbox" class="test-case-checkbox" data-id="${item.id}" ${selectedTestCaseIds.has(item.id) ? 'checked' : ''}></td>
+                    <td>${item.id}</td>
+                    <td>${item.test_type_name || 'N/A'}</td>
+                    <td>${item.title || 'N/A'}</td>
+                    <td class="justify">${item.description || 'N/A'}</td>
+                    <td>${item.commit_hash || 'N/A'}</td>
+                    <td>
+                        <select class="modal-analysis-status-select" data-id="${item.id}">
+                            ${['Pending', 'On Hold', 'Rejected', 'Completed'].map(option => `<option value="${option}" ${item.version === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td>
+                        <button class="delete" onclick="confirmDelete(${item.id}, '${item.title || 'N/A'}', true)">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            bindModalTableEvents();
+            const totalPages = Math.ceil(modalFilteredData.length / modalPageSize);
+            document.getElementById('modalPageInfo').textContent = `Page ${modalCurrentPage} of ${totalPages || 1}`;
+            document.getElementById('modalPrevPage').disabled = modalCurrentPage === 1;
+            document.getElementById('modalNextPage').disabled = modalCurrentPage === totalPages || totalPages === 0;
+            document.getElementById('modalPagination').style.display = modalFilteredData.length > 0 ? 'flex' : 'none';
+            document.getElementById('testCaseTable').style.display = modalFilteredData.length > 0 ? 'table' : 'none';
+        }
+
+        function renderMappedTable() {
+            const start = (mappedCurrentPage - 1) * mappedPageSize;
+            const end = start + mappedPageSize;
+            const paginatedData = mappedFilteredData.slice(start, end);
+
+            const tbody = document.getElementById('mappedTableBody');
+            tbody.innerHTML = '';
+
+            paginatedData.forEach(item => {
+                const row = document.createElement('tr');
+                row.dataset.id = item.id;
+                row.innerHTML = `
+                    <td>${item.id}</td>
+                    <td>${item.test_type_name || 'N/A'}</td>
+                    <td>${item.title || 'N/A'}</td>
+                    <td class="justify">${item.description || 'N/A'}</td>
+                    <td>${item.commit_hash || 'N/A'}</td>
+                    <td>
+                        <select class="mapped-analysis-status-select" data-id="${item.id}">
+                            ${['Pending', 'On Hold', 'Rejected', 'Completed'].map(option => `<option value="${option}" ${item.version === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td>
+                        <button class="delete" onclick="confirmDelete(${item.id}, '${item.title || 'N/A'}', true, true)">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            bindMappedTableEvents();
+            const totalPages = Math.ceil(mappedFilteredData.length / mappedPageSize);
+            document.getElementById('mappedPageInfo').textContent = `Page ${mappedCurrentPage} of ${totalPages || 1}`;
+            document.getElementById('mappedPrevPage').disabled = mappedCurrentPage === 1;
+            document.getElementById('mappedNextPage').disabled = mappedCurrentPage === totalPages || totalPages === 0;
+            document.getElementById('mappedPagination').style.display = mappedFilteredData.length > 0 ? 'flex' : 'none';
+            document.getElementById('mappedTestCaseTable').style.display = mappedFilteredData.length > 0 ? 'table' : 'none';
+        }
+
+        function bindModalTableEvents() {
+            eventListeners.forEach((listener, element) => {
+                element.removeEventListener('change', listener);
+                element.removeEventListener('click', listener);
+            });
+            eventListeners.clear();
+
+            document.querySelectorAll('.modal-analysis-status-select').forEach(select => {
+                const listener = (e) => {
+                    const testCaseId = e.target.dataset.id;
+                    const newStatus = e.target.value;
+                    updateTestCaseField(testCaseId, 'version', newStatus);
+                };
+                select.addEventListener('change', listener);
+                eventListeners.set(select, listener);
+            });
+
+            document.querySelectorAll('.test-case-checkbox').forEach(checkbox => {
+                const listener = (e) => {
+                    const testCaseId = parseInt(e.target.dataset.id);
+                    if (e.target.checked) {
+                        selectedTestCaseIds.add(testCaseId);
+                    } else {
+                        selectedTestCaseIds.delete(testCaseId);
+                    }
+                    document.getElementById('selectAllCheckbox').checked = modalFilteredData.every(item => selectedTestCaseIds.has(item.id));
+                };
+                checkbox.addEventListener('change', listener);
+                eventListeners.set(checkbox, listener);
+            });
+
+            document.getElementById('selectAllCheckbox').addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                document.querySelectorAll('.test-case-checkbox').forEach(checkbox => {
+                    const testCaseId = parseInt(checkbox.dataset.id);
+                    checkbox.checked = isChecked;
+                    if (isChecked) {
+                        selectedTestCaseIds.add(testCaseId);
+                    } else {
+                        selectedTestCaseIds.delete(testCaseId);
+                    }
+                });
+            });
+        }
+
+        function bindMappedTableEvents() {
+            eventListeners.forEach((listener, element) => {
+                element.removeEventListener('change', listener);
+            });
+            eventListeners.clear();
+
+            document.querySelectorAll('.mapped-analysis-status-select').forEach(select => {
+                const listener = (e) => {
+                    const testCaseId = e.target.dataset.id;
+                    const newStatus = e.target.value;
+                    updateTestCaseField(testCaseId, 'version', newStatus, true);
+                };
+                select.addEventListener('change', listener);
+                eventListeners.set(select, listener);
+            });
+        }
+
+        async function mapTestCases() {
+            const testId = document.getElementById('testCaseModal').dataset.testId;
+            const jiraId = document.getElementById('modalJiraId').textContent.replace('Jira ID: ', '');
+            const engagementId = document.getElementById('engagementId').value;
+
+            try {
+                const existingTestsResponse = await fetch(`https://demo.defectdojo.org/api/v2/tests/?engagement=${engagementId}&tags=mcr_jira_testcases&tags=${jiraId}`, {
+                    credentials: 'include',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                if (!existingTestsResponse.ok) throw new Error('Failed to fetch existing mapped tests');
+                const existingTests = (await existingTestsResponse.json()).results || [];
+
+                for (const existingTest of existingTests) {
+                    if (!selectedTestCaseIds.has(existingTest.id)) {
+                        const response = await fetch(`https://demo.defectdojo.org/api/v2/tests/${existingTest.id}/`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRFToken': csrfToken },
+                            credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error(`Failed to delete test ${existingTest.id}`);
+                    }
+                }
+
+                for (const testCaseId of selectedTestCaseIds) {
+                    const testCase = testCaseData.find(tc => tc.id === parseInt(testCaseId));
+                    if (!testCase) continue;
+
+                    const existingTest = existingTests.find(t => t.title === testCase.title && t.tags.includes(jiraId));
+                    if (existingTest) continue;
+
+                    const payload = {
+                        title: testCase.title || 'Untitled Test Case',
+                        target_start: testCase.target_start || '2022-01-19T00:00:00Z',
+                        target_end: testCase.target_end || '2022-01-19T23:59:59Z',
+                        engagement: parseInt(engagementId),
+                        lead: testCase.lead || null,
+                        test_type: testCase.test_type || null,
+                        environment: testCase.environment || null,
+                        test_type_name: testCase.test_type_name || 'Default Test Type',
+                        tags: [...(testCase.tags || []), 'mcr_jira_testcases', jiraId],
+                        description: testCase.description || '',
+                        commit_hash: testCase.commit_hash || 'N/A',
+                        branch_tag: testCase.branch_tag || 'N/A',
+                        version: testCase.version || 'Pending'
+                    };
+
+                    const response = await fetch('https://demo.defectdojo.org/api/v2/tests/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrfToken
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error('Failed to map test case');
+                }
+
+                await updateTestStatusBasedOnTestCases(testId, jiraId, engagementId);
+                applyModalFilters();
+                showToast('Test cases mapped successfully', 'success', 'modalToastContainer');
+            } catch (err) {
+                console.error('Error mapping test cases:', err);
+                showToast(`Error mapping test cases: ${err.message}`, 'error', 'modalToastContainer');
+            }
+        }
+
+        document.getElementById('modalGoButton').addEventListener('click', applyModalFilters);
+        document.getElementById('modalResetButton').addEventListener('click', () => {
+            document.getElementById('srNoFilter').value = '';
+            document.getElementById('modalityTrigger').value = '';
+            document.getElementById('modality').value = '';
+            document.getElementById('titleFilter').value = '';
+            document.getElementById('descriptionFilter').value = '';
+            document.getElementById('categoryTrigger').value = '';
+            document.getElementById('category').value = '';
+            document.getElementById('testCaseAnalysisStatusTrigger').value = '';
+            document.getElementById('testCaseAnalysisStatus').value = '';
+            document.getElementById('mappingStatusTrigger').value = 'Mapped';
+            document.getElementById('mappingStatus').value = 'Mapped';
+            modalFilteredData = [...testCaseData];
+            applyModalFilters();
+        });
+        document.getElementById('modalRefreshButton').addEventListener('click', () => {
+            const testId = document.getElementById('testCaseModal').dataset.testId;
+            const jiraId = document.getElementById('modalJiraId').textContent.replace('Jira ID: ', '');
+            refreshTestCases(testId, jiraId);
+        });
+        document.getElementById('mapButton').addEventListener('click', mapTestCases);
+        document.getElementById('pageSizeSelect').addEventListener('change', (e) => {
+            modalPageSize = parseInt(e.target.value);
+            modalCurrentPage = 1;
+            renderModalTable();
+        });
+
+        document.getElementById('modalPrevPage').addEventListener('click', () => {
+            if (modalCurrentPage > 1) {
+                modalCurrentPage--;
+                renderModalTable();
+            }
+        });
+        document.getElementById('modalNextPage').addEventListener('click', () => {
+            const totalPages = Math.ceil(modalFilteredData.length / modalPageSize);
+            if (modalCurrentPage < totalPages) {
+                modalCurrentPage++;
+                renderModalTable();
+            }
+        });
+
+        document.getElementById('mappedGoButton').addEventListener('click', applyMappedFilters);
+        document.getElementById('mappedResetButton').addEventListener('click', () => {
+            document.getElementById('mappedSrNoFilter').value = '';
+            document.getElementById('mappedModalityTrigger').value = '';
+            document.getElementById('mappedModality').value = '';
+            document.getElementById('mappedTitleFilter').value = '';
+            document.getElementById('mappedDescriptionFilter').value = '';
+            document.getElementById('mappedCategoryTrigger').value = '';
+            document.getElementById('mappedCategory').value = '';
+            document.getElementById('mappedAnalysisStatusTrigger').value = '';
+            document.getElementById('mappedAnalysisStatus').value = '';
+            mappedFilteredData = [...mappedTestCaseData];
+            applyMappedFilters();
+        });
+        document.getElementById('mappedRefreshButton').addEventListener('click', () => {
+            const testId = document.getElementById('mappedTestCaseModal').dataset.testId;
+            const jiraId = document.getElementById('mappedModalJiraId').textContent.replace('Jira ID: ', '');
+            refreshMappedTestCases(testId, jiraId);
+        });
+        document.getElementById('mappedPageSizeSelect').addEventListener('change', (e) => {
+            mappedPageSize = parseInt(e.target.value);
+            mappedCurrentPage = 1;
+            renderMappedTable();
+        });
+
+        document.getElementById('mappedPrevPage').addEventListener('click', () => {
+            if (mappedCurrentPage > 1) {
+                mappedCurrentPage--;
+                renderMappedTable();
+            }
+        });
+        document.getElementById('mappedNextPage').addEventListener('click', () => {
+            const totalPages = Math.ceil(mappedFilteredData.length / mappedPageSize);
+            if (mappedCurrentPage < totalPages) {
+                mappedCurrentPage++;
+                renderMappedTable();
+            }
+        });
+
+        document.querySelector('#testCaseModal .close').addEventListener('click', () => {
+            document.getElementById('testCaseModal').style.display = 'none';
+        });
+
+        // Initialize the application
+        (async () => {
+            await fetchEngagements();
+            await fetchUsers();
+            await fetchEnvironments();
+        })();
+    </script>
+</body>
+</html>
