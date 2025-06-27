@@ -99,9 +99,14 @@ class App:
         # Step 4: Fetch traces
         self.log("Fetching Contrast traces...")
         self.fetch_contrast_traces(applications)
+        self.progress.set(0.65)
+
+        # Step 5: Remove duplicates from Traces.xlsx
+        self.log("Removing duplicates from Traces.xlsx...")
+        self.remove_duplicates_from_traces()
         self.progress.set(0.8)
 
-        # Step 5: Match and generate Final.xlsx
+        # Step 6: Match and generate Final.xlsx
         self.log("Matching products and traces, generating Final.xlsx...")
         self.generate_final_xlsx()
         self.progress.set(1.0)
@@ -219,6 +224,19 @@ class App:
         df = pd.DataFrame(traces)
         df.to_excel(os.path.join(script_dir, "Traces.xlsx"), index=False)
         self.log(f"Traces saved to Traces.xlsx ({len(traces)} traces)")
+
+    def remove_duplicates_from_traces(self):
+        try:
+            traces_df = pd.read_excel(os.path.join(script_dir, "Traces.xlsx"))
+            initial_count = len(traces_df)
+            traces_df = traces_df.drop_duplicates(subset=["Trace ID"], keep="first")
+            final_count = len(traces_df)
+            traces_df.to_excel(os.path.join(script_dir, "Traces.xlsx"), index=False)
+            self.log(f"Removed {initial_count - final_count} duplicate traces. {final_count} traces remain in Traces.xlsx")
+        except FileNotFoundError:
+            self.log("Error: Traces.xlsx not found.")
+        except Exception as e:
+            self.log(f"Error removing duplicates: {e}")
 
     def generate_final_xlsx(self):
         try:
