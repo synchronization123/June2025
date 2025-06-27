@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
 import glob
+import time
+import retrying
 
 # Set customtkinter appearance
 ctk.set_appearance_mode("System")  # Options: "Light", "Dark", "System"
@@ -128,6 +130,7 @@ class App:
             0, lambda: messagebox.showinfo("Success", "Engagements created and intermediate files cleaned up. Final.xlsx retained.")
         )
 
+    @retrying.retry(stop_max_attempt_number=3, wait_fixed=2000)
     def fetch_defectdojo_mappings(self):
         defectdojo_url = "https://demo.defectdojo.org/api/v2/tests/?engagement=72668"
         headers = {"Authorization": "Token jdndjdjjd"}  # Replace with actual token
@@ -149,7 +152,9 @@ class App:
                 self.log(f"Error fetching DefectDojo mappings: {response.status_code} - {response.text}")
         except Exception as e:
             self.log(f"Exception fetching DefectDojo mappings: {e}")
+            raise
 
+    @retrying.retry(stop_max_attempt_number=3, wait_fixed=2000)
     def fetch_contrast_applications(self):
         contrast_token = "dhdjdjdjdjrjrjrjdj=="  # Replace with actual token
         org_uuid = "gshdhdhd"  # Replace with actual Org UUID
@@ -182,6 +187,7 @@ class App:
                     self.log(f"Error fetching applications: {response.status_code} - {response.text}")
             except Exception as e:
                 self.log(f"Exception fetching applications: {e}")
+                raise
 
         return applications
 
@@ -199,6 +205,7 @@ class App:
         base_url = "https://contrast.crm.com/Contrast/api/ng/"
         traces = []
 
+        @retrying.retry(stop_max_attempt_number=3, wait_fixed=2000)
         def fetch_traces_for_app(app):
             app_id = app["app_id"]
             url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit=100&status=Reported"
@@ -223,6 +230,7 @@ class App:
                     self.log(f"Error for App ID {app_id}: {response.status_code} - {response.text}")
             except Exception as e:
                 self.log(f"Exception for App ID {app_id}: {e}")
+                raise
             return app_traces
 
         with requests.Session() as session:
@@ -335,6 +343,27 @@ class App:
         wb.save(excel_file)
         self.log("Formatting applied to Final.xlsx")
 
+    def create_engagement(self, trace_row, session, url, headers, current_date):
+        payload = {
+            "tags": ["contrast"],
+            "target_start": current_date,
+            "target_end": current_date,
+            "status": "Not Started",
+            "commit_hash": str(trace_row["Rule"]),
+            "branch_tag": str(trace_row["Severity"]),
+            "lead": 3,
+            "product": int(trace_row["id"]),
+            "name": str(trace_row["Trace ID"]),
+        }
+        try:
+            response = session.post(url, json=payload, headers=headers, timeout=10)
+            if response.status_code in (200, 201):
+                self.log(f"Created engagement for Trace ID {trace_row['Trace ID']}")
+            else:
+                self.log(f"Error creating engagement for Trace ID {trace_row['Trace ID']}: {response.status_code} - {response.text}")
+        except Exception as e:
+            self.log(f"Exception creating engagement for Trace ID {trace_row['Trace ID']}: {e}")
+
     def create_defectdojo_engagements(self):
         try:
             final_df = pd.read_excel(os.path.join(script_dir, "Final.xlsx"))
@@ -349,6 +378,7 @@ class App:
         }
         current_date = date.today().strftime("%Y-%m-%d")
 
+        @retrying.retry(stop_max_attempt_number=3, wait_fixed=2000)
         def check_and_create_engagement(trace_row):
             trace_id = trace_row["Trace ID"]
             engagement_url = f"https://demo.defectdojo.org/api/v2/engagements?name={trace_id}"
@@ -369,32 +399,13 @@ class App:
                         self.create_engagement(trace_row, session, defectdojo_url, headers, current_date)
                 else:
                     self.log(f"Error checking engagement for Trace ID {trace_id}: {response.status_code} - {response.text}")
+                # Delay to prevent overwhelming the slow API
+                time.sleep(1)
             except Exception as e:
                 self.log(f"Exception checking engagement for Trace ID {trace_id}: {e}")
 
-        def create_engagement(self, trace_row, session, url, headers, current_date):
-            payload = {
-                "tags": ["contrast"],
-                "target_start": current_date,
-                "target_end": current_date,
-                "status": "Not Started",
-                "commit_hash": str(trace_row["Rule"]),
-                "branch_tag": str(trace_row["Severity"]),
-                "lead": 3,
-                "product": int(trace_row["id"]),
-                "name": str(trace_row["Trace ID"]),
-            }
-            try:
-                response = session.post(url, json=payload, headers=headers, timeout=10)
-                if response.status_code in (200, 201):
-                    self.log(f"Created engagement for Trace ID {trace_row['Trace ID']}")
-                else:
-                    self.log(f"Error creating engagement for Trace ID {trace_row['Trace ID']}: {response.status_code} - {response.text}")
-            except Exception as e:
-                self.log(f"Exception creating engagement for Trace ID {trace_row['Trace ID']}: {e}")
-
         with requests.Session() as session:
-            with ThreadPoolExecutor(max_workers=10) as executor:
+            with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced workers for slow API
                 executor.map(check_and_create_engagement, [row for _, row in final_df.iterrows()])
 
     def cleanup_intermediate_files(self):
