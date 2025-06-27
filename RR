@@ -252,22 +252,24 @@ class App:
         # Create a dictionary for quick app_id to id lookup
         mapping_dict = dict(zip(products_df["app_id"], products_df["id"]))
 
-        for _, trace_row in traces_df.iterrows():
+        # Function to process a single trace
+        def process_trace(trace_row):
             trace_app_id = trace_row["app_id"]
             defectdojo_id = mapping_dict.get(trace_app_id, 33)  # Default to 33 if no match
+            return {
+                "Trace ID": trace_row["Trace ID"],
+                "Severity": trace_row["Severity"],
+                "Status": trace_row["Status"],
+                "Rule": trace_row["Rule"],
+                "Trace Title": trace_row["Trace Title"],
+                "name": trace_row["name"],
+                "app_id": trace_row["app_id"],
+                "id": defectdojo_id,
+            }
 
-            final_data.append(
-                {
-                    "Trace ID": trace_row["Trace ID"],
-                    "Severity": trace_row["Severity"],
-                    "Status": trace_row["Status"],
-                    "Rule": trace_row["Rule"],
-                    "Trace Title": trace_row["Trace Title"],
-                    "name": trace_row["name"],
-                    "app_id": trace_row["app_id"],
-                    "id": defectdojo_id,
-                }
-            )
+        # Use ThreadPoolExecutor for parallel mapping
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            final_data = list(executor.map(process_trace, [row for _, row in traces_df.iterrows()]))
 
         if not final_data:
             self.log("No traces found to process.")
@@ -286,9 +288,7 @@ class App:
         df = pd.DataFrame(final_data, columns=columns)
         excel_file = os.path.join(script_dir, "Final.xlsx")
         df.to_excel(excel_file, index=False)
-        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d部分
-
-System: d in final_data if d['id'] != 33)} matched)")
+        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d in final_data if d['id'] != 33)} matched)")
 
         # Apply formatting
         wb = load_workbook(excel_file)
