@@ -236,6 +236,7 @@ class App:
             best_product_id = None
             best_product_name = None
 
+            # Attempt to find a matching product
             for _, product_row in products_df.iterrows():
                 product_name = product_row["name"].lower()
                 score = fuzz.ratio(trace_name, product_name)
@@ -245,23 +246,23 @@ class App:
                     best_product_id = product_row["id"]
                     best_product_name = product_row["name"]
 
-            if best_match:
-                final_data.append(
-                    {
-                        "Trace ID": trace_row["Trace ID"],
-                        "Severity": trace_row["Severity"],
-                        "Status": trace_row["Status"],
-                        "Rule": trace_row["Rule"],
-                        "Trace Title": trace_row["Trace Title"],
-                        "name": trace_row["name"],
-                        "app_id": trace_row["app_id"],
-                        "id": best_product_id,
-                        "Product Name": best_product_name,
-                    }
-                )
+            # Include all traces, with default values for unmatched ones
+            final_data.append(
+                {
+                    "Trace ID": trace_row["Trace ID"],
+                    "Severity": trace_row["Severity"],
+                    "Status": trace_row["Status"],
+                    "Rule": trace_row["Rule"],
+                    "Trace Title": trace_row["Trace Title"],
+                    "name": trace_row["name"],
+                    "app_id": trace_row["app_id"],
+                    "id": best_product_id if best_match else 33,  # Default id to 33 if no match
+                    "Product Name": best_product_name if best_match else "",  # Blank if no match
+                }
+            )
 
         if not final_data:
-            self.log("No matches found between products and traces.")
+            self.log("No traces found to process.")
             return
 
         columns = [
@@ -278,7 +279,7 @@ class App:
         df = pd.DataFrame(final_data, columns=columns)
         excel_file = os.path.join(script_dir, "Final.xlsx")
         df.to_excel(excel_file, index=False)
-        self.log(f"Final data saved to Final.xlsx ({len(final_data)} matches)")
+        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d in final_data if d['Product Name'] != '')} matched)")
 
         # Apply formatting
         wb = load_workbook(excel_file)
