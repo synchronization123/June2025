@@ -85,7 +85,7 @@ class App:
         # Step 1: Clear existing .xlsx files
         self.clear_xlsx_files()
 
-        # Step 2: Fetch app_id:id mappings from DefectDojo text file
+        # Step 2: Fetch app_id:id mappings from DefectDojo API
         self.log("Fetching DefectDojo app_id:id mappings...")
         self.fetch_defectdojo_mappings()
         self.progress.set(0.3)
@@ -119,19 +119,19 @@ class App:
         )
 
     def fetch_defectdojo_mappings(self):
-        mapping_url = "https://demo.defectdojo.org/access_file/5039/72668/Engagement"
+        defectdojo_url = "https://demo.defectdojo.org/api/v2/tests/?engagement=72668"
         headers = {"Authorization": "Token jdndjdjjd"}  # Replace with actual token
         mappings = []
 
         try:
-            response = requests.get(mapping_url, headers=headers, timeout=10)
+            response = requests.get(defectdojo_url, headers=headers, timeout=10)
             if response.status_code == 200:
-                # Parse text file content (format: app_id:id per line)
-                lines = response.text.strip().split("\n")
-                for line in lines:
-                    if ":" in line:
-                        app_id, defectdojo_id = line.split(":", 1)
-                        mappings.append({"app_id": app_id.strip(), "id": defectdojo_id.strip()})
+                data = response.json()
+                for test in data.get("results", []):
+                    app_id = test.get("title", "")
+                    defectdojo_id = test.get("description", "")
+                    if app_id and defectdojo_id:  # Ensure both fields are non-empty
+                        mappings.append({"app_id": str(app_id).strip(), "id": str(defectdojo_id).strip()})
                 df = pd.DataFrame(mappings)
                 df.to_excel(os.path.join(script_dir, "products.xlsx"), index=False)
                 self.log(f"Mappings saved to products.xlsx ({len(mappings)} mappings)")
@@ -191,7 +191,7 @@ class App:
 
         def fetch_traces_for_app(app):
             app_id = app["app_id"]
-            url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit=100&status=Reported Patron
+            url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit=100&status=Reported"
             app_traces = []
             try:
                 response = session.get(url, timeout=10)
@@ -286,7 +286,9 @@ class App:
         df = pd.DataFrame(final_data, columns=columns)
         excel_file = os.path.join(script_dir, "Final.xlsx")
         df.to_excel(excel_file, index=False)
-        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d in final_data if d['id'] != 33)} matched)")
+        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d部分
+
+System: d in final_data if d['id'] != 33)} matched)")
 
         # Apply formatting
         wb = load_workbook(excel_file)
