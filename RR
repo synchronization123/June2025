@@ -8,7 +8,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
-from fuzzywuzzy import fuzz
 import glob
 
 # Set customtkinter appearance
@@ -86,9 +85,9 @@ class App:
         # Step 1: Clear existing .xlsx files
         self.clear_xlsx_files()
 
-        # Step 2: Fetch DefectDojo products
-        self.log("Fetching DefectDojo products...")
-        self.fetch_defectdojo_products()
+        # Step 2: Fetch app_id:id mappings from DefectDojo text file
+        self.log("Fetching DefectDojo app_id:id mappings...")
+        self.fetch_defectdojo_mappings()
         self.progress.set(0.3)
 
         # Step 3: Fetch Contrast applications
@@ -107,7 +106,7 @@ class App:
         self.progress.set(0.8)
 
         # Step 6: Match and generate Final.xlsx
-        self.log("Matching products and traces, generating Final.xlsx...")
+        self.log("Matching traces with mappings, generating Final.xlsx...")
         self.generate_final_xlsx()
         self.progress.set(1.0)
 
@@ -119,24 +118,27 @@ class App:
             0, lambda: messagebox.showinfo("Success", "Final.xlsx generated successfully")
         )
 
-    def fetch_defectdojo_products(self):
-        defectdojo_url = "https://demo.defectdojo.org/api/v2/products/?limit=500"
+    def fetch_defectdojo_mappings(self):
+        mapping_url = "https://demo.defectdojo.org/access_file/5039/72668/Engagement"
         headers = {"Authorization": "Token jdndjdjjd"}  # Replace with actual token
-        products = []
+        mappings = []
 
         try:
-            response = requests.get(defectdojo_url, headers=headers, timeout=10)
+            response = requests.get(mapping_url, headers=headers, timeout=10)
             if response.status_code == 200:
-                data = response.json()
-                for product in data.get("results", []):
-                    products.append({"id": product.get("id", ""), "name": product.get("name", "")})
-                df = pd.DataFrame(products)
+                # Parse text file content (format: app_id:id per line)
+                lines = response.text.strip().split("\n")
+                for line in lines:
+                    if ":" in line:
+                        app_id, defectdojo_id = line.split(":", 1)
+                        mappings.append({"app_id": app_id.strip(), "id": defectdojo_id.strip()})
+                df = pd.DataFrame(mappings)
                 df.to_excel(os.path.join(script_dir, "products.xlsx"), index=False)
-                self.log(f"Products saved to products.xlsx ({len(products)} products)")
+                self.log(f"Mappings saved to products.xlsx ({len(mappings)} mappings)")
             else:
-                self.log(f"Error fetching DefectDojo products: {response.status_code} - {response.text}")
+                self.log(f"Error fetching DefectDojo mappings: {response.status_code} - {response.text}")
         except Exception as e:
-            self.log(f"Exception fetching DefectDojo products: {e}")
+            self.log(f"Exception fetching DefectDojo mappings: {e}")
 
     def fetch_contrast_applications(self):
         contrast_token = "dhdjdjdjdjrjrjrjdj=="  # Replace with actual token
@@ -189,7 +191,7 @@ class App:
 
         def fetch_traces_for_app(app):
             app_id = app["app_id"]
-            url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit=100&status=Reported"
+            url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit=100&status=Reported Patron
             app_traces = []
             try:
                 response = session.get(url, timeout=10)
@@ -247,24 +249,13 @@ class App:
             return
 
         final_data = []
+        # Create a dictionary for quick app_id to id lookup
+        mapping_dict = dict(zip(products_df["app_id"], products_df["id"]))
+
         for _, trace_row in traces_df.iterrows():
-            trace_name = trace_row["name"].lower()
-            best_match = None
-            best_score = 0
-            best_product_id = None
-            best_product_name = None
+            trace_app_id = trace_row["app_id"]
+            defectdojo_id = mapping_dict.get(trace_app_id, 33)  # Default to 33 if no match
 
-            # Attempt to find a matching product
-            for _, product_row in products_df.iterrows():
-                product_name = product_row["name"].lower()
-                score = fuzz.ratio(trace_name, product_name)
-                if score >= 98 and score > best_score:
-                    best_score = score
-                    best_match = product_row["name"]
-                    best_product_id = product_row["id"]
-                    best_product_name = product_row["name"]
-
-            # Include all traces, with default values for unmatched ones
             final_data.append(
                 {
                     "Trace ID": trace_row["Trace ID"],
@@ -274,8 +265,7 @@ class App:
                     "Trace Title": trace_row["Trace Title"],
                     "name": trace_row["name"],
                     "app_id": trace_row["app_id"],
-                    "id": best_product_id if best_match else 33,  # Default id to 33 if no match
-                    "Product Name": best_product_name if best_match else "",  # Blank if no match
+                    "id": defectdojo_id,
                 }
             )
 
@@ -292,12 +282,11 @@ class App:
             "name",
             "app_id",
             "id",
-            "Product Name",
         ]
         df = pd.DataFrame(final_data, columns=columns)
         excel_file = os.path.join(script_dir, "Final.xlsx")
         df.to_excel(excel_file, index=False)
-        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d in final_data if d['Product Name'] != '')} matched)")
+        self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d in final_data if d['id'] != 33)} matched)")
 
         # Apply formatting
         wb = load_workbook(excel_file)
