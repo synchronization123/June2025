@@ -145,7 +145,6 @@ class App:
                     defectdojo_id = test.get("description", "")
                     if app_id and defectdojo_id:  # Ensure both fields are non-empty
                         try:
-                            # Ensure defectdojo_id is a valid integer
                             defectdojo_id = int(defectdojo_id)
                             mappings.append({"app_id": str(app_id).strip(), "id": defectdojo_id})
                         except ValueError:
@@ -272,10 +271,8 @@ class App:
             return
 
         final_data = []
-        # Create a dictionary for quick app_id to id lookup
         mapping_dict = dict(zip(products_df["app_id"], products_df["id"]))
 
-        # Function to process a single trace
         def process_trace(trace_row):
             trace_app_id = trace_row["app_id"]
             defectdojo_id = mapping_dict.get(trace_app_id, 33)  # Default to 33 if no match
@@ -290,7 +287,6 @@ class App:
                 "id": defectdojo_id,
             }
 
-        # Use ThreadPoolExecutor for parallel mapping
         with ThreadPoolExecutor(max_workers=10) as executor:
             final_data = list(executor.map(process_trace, [row for _, row in traces_df.iterrows()]))
 
@@ -313,7 +309,6 @@ class App:
         df.to_excel(excel_file, index=False)
         self.log(f"Final data saved to Final.xlsx ({len(final_data)} traces, {sum(1 for d in final_data if d['id'] != 33)} matched)")
 
-        # Apply formatting
         wb = load_workbook(excel_file)
         ws = wb.active
 
@@ -365,12 +360,13 @@ class App:
             if response.status_code in (200, 201):
                 response_data = response.json()
                 engagement_id = response_data.get("id", "Unknown")
-                self.log(f"Created engagement for Trace ID {trace_row['Trace ID']} (Engagement ID: {engagement_id})")
+                self.log(f"Created engagement for Trace ID {trace_row['Trace ID']} (Engagement ID: {engagement_id}, Product ID: {trace_row['id']})")
             else:
                 self.log(f"Error creating engagement for Trace ID {trace_row['Trace ID']}: {response.status_code} - {response.text}")
         except Exception as e:
             self.log(f"Exception creating engagement for Trace ID {trace_row['Trace ID']}: {e}")
 
+    @retrying.retry(stop_max_attempt_number=3, wait_fixed=2000)
     def create_defectdojo_engagements(self):
         try:
             final_df = pd.read_excel(os.path.join(script_dir, "Final.xlsx"))
@@ -388,31 +384,54 @@ class App:
         @retrying.retry(stop_max_attempt_number=3, wait_fixed=2000)
         def check_and_create_engagement(trace_row):
             trace_id = trace_row["Trace ID"]
-            engagement_url = f"https://demo.defectdojo.org/api/v2/engagements/?name={trace_id}"
+            product_id = int(trace_row["id"])
+            engagement_url = f"https://demo.defectdojo.org/api/v2/engagements/?name={trace_id}&product={product_id}"
+            self.log(f"Verifying engagement for Trace ID {trace_id} and Product ID {product_id}...")
+
             try:
                 response = session.get(engagement_url, headers=headers, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     engagements = data.get("results", [])
                     if engagements:
-                        for engagement in engagements:
-                            if engagement.get("status") == "Completed":
-                                # Create new engagement if existing one is Completed
-                                self.create_engagement(trace_row, session, defectdojo_url, headers, current_date)
-                            else:
-                                self.log(f"Skipping engagement creation for Trace ID {trace_id}: Existing engagement status is {engagement.get('status')}")
+                        self.log(f"Found {len(engagements)} existing engagement(s) for Trace ID {trace_id} and Product ID {product_id}")
+                        active_engagements = [
+                            eng for eng in engagements if eng.get("status") != "Completed"
+                        ]
+                        completed_engagements = [
+                            eng for eng in engagements if eng.get("status") == "Completed"
+                        ]
+
+                        if active_engagements:
+                            self.log(
+                                f"Skipping engagement creation for Trace ID {trace_id}: Found {len(active_engagements)} active engagement(s) with status {[eng.get('status') for eng in active_engagements]}"
+                            )
+                            return
+                        elif completed_engagements:
+                            self.log(
+                                f"Found {len(completed_engagements)} completed engagement(s) for Trace ID {trace_id}. Creating new engagement..."
+                            )
+                            self.create_engagement(trace_row, session, defectdojo_url, headers, current_date)
+                        else:
+                            self.log(
+                                f"No active or completed engagements found for Trace ID {trace_id}, but engagements exist with unexpected status. Creating new engagement..."
+                            )
+                            self.create_engagement(trace_row, session, defectdojo_url, headers, current_date)
                     else:
-                        # No engagement found, create one
+                        self.log(f"No existing engagements found for Trace ID {trace_id} and Product ID {product_id}. Creating new engagement...")
                         self.create_engagement(trace_row, session, defectdojo_url, headers, current_date)
                 else:
                     self.log(f"Error checking engagement for Trace ID {trace_id}: {response.status_code} - {response.text}")
-                # Delay to prevent overwhelming the slow API
-                time.sleep(1)
+                    # Proceed with creation as a fallback if verification fails
+                    self.create_engagement(trace_row, session, defectdojo_url, headers, current_date)
+                time.sleep(1)  # Delay to prevent overwhelming the API
             except Exception as e:
                 self.log(f"Exception checking engagement for Trace ID {trace_id}: {e}")
+                # Log error but do not create engagement to avoid duplicates in case of transient errors
+                return
 
         with requests.Session() as session:
-            with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced workers for slow API
+            with ThreadPoolExecutor(max_workers=5) as executor:
                 executor.map(check_and_create_engagement, [row for _, row in final_df.iterrows()])
 
     def cleanup_intermediate_files(self):
