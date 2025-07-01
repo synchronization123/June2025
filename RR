@@ -1,10 +1,10 @@
 import pandas as pd
 import requests
 
-# Load your Excel file
-df = pd.read_excel("engagement_lead_update.xlsx")  # Columns: id, lead
-
-# DefectDojo API Token and Base URL
+# -----------------------------
+# Configuration
+# -----------------------------
+EXCEL_FILE = "engagement_lead_update.xlsx"
 TOKEN = "dhjdjjd"
 BASE_URL = "https://demo.defectdojo.org/api/v2"
 HEADERS = {
@@ -12,33 +12,45 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+# -----------------------------
+# Load Excel and Convert Columns
+# -----------------------------
+df = pd.read_excel(EXCEL_FILE)
+df["id"] = df["id"].astype(int)
+df["lead"] = df["lead"].astype(int)
+
+# -----------------------------
+# Process Each Engagement
+# -----------------------------
 for index, row in df.iterrows():
-    engagement_id = row["id"]
-    new_lead_id = row["lead"]
-    
-    # Step 1: Get existing engagement details
-    response = requests.get(f"{BASE_URL}/engagements/{engagement_id}/", headers=HEADERS)
-    
-    if response.status_code != 200:
-        print(f"Failed to fetch engagement {engagement_id}: {response.text}")
+    engagement_id = int(row["id"])
+    new_lead_id = int(row["lead"])
+
+    # Step 1: GET existing engagement details
+    get_url = f"{BASE_URL}/engagements/{engagement_id}/"
+    get_response = requests.get(get_url, headers=HEADERS)
+
+    if get_response.status_code != 200:
+        print(f"[ERROR] Failed to fetch engagement {engagement_id}: {get_response.text}")
         continue
-    
-    engagement = response.json()
-    
-    # Step 2: Update lead only, keep others same
+
+    engagement = get_response.json()
+
+    # Step 2: Prepare payload with updated lead
     update_payload = {
         "id": engagement_id,
         "name": engagement["name"],
         "target_start": engagement["target_start"],
         "target_end": engagement["target_end"],
         "lead": new_lead_id,
-        "product": engagement["product"]
+        "product": int(engagement["product"])
     }
-    
-    # Step 3: PUT request to update the engagement
-    put_response = requests.put(f"{BASE_URL}/engagements/{engagement_id}/", headers=HEADERS, json=update_payload)
-    
+
+    # Step 3: PUT update request
+    put_url = f"{BASE_URL}/engagements/{engagement_id}/"
+    put_response = requests.put(put_url, headers=HEADERS, json=update_payload)
+
     if put_response.status_code == 200:
-        print(f"Updated lead for engagement {engagement_id} successfully.")
+        print(f"[OK] Updated engagement {engagement_id} with new lead {new_lead_id}.")
     else:
-        print(f"Failed to update engagement {engagement_id}: {put_response.text}")
+        print(f"[ERROR] Failed to update engagement {engagement_id}: {put_response.text}")
