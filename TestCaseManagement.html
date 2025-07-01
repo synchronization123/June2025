@@ -140,8 +140,10 @@ def generate_html_report(finding_data, report_name, start_date, end_date, prepar
           border: 1px solid #cccccc;
           padding: 5px;
           margin-bottom: 15px;
-          width: 1000;
+          max-width: 100%;
           max-height: 800px;
+          box-sizing: border-box;
+          object-fit: contain;
           border-radius: 4px;
         }}
         .steps_to_reproduce {{
@@ -199,6 +201,7 @@ def generate_html_report(finding_data, report_name, start_date, end_date, prepar
           background-color: #fafafa;
           box-shadow: 0 1px 5px #00000033;
           page-break-inside: avoid;
+          overflow: hidden; /* Ensure content stays within card */
         }}
         .finding-border:first-of-type {{
           margin-top: 0; /* No space after Findings Details */
@@ -239,7 +242,7 @@ def generate_html_report(finding_data, report_name, start_date, end_date, prepar
             <th>End Date:</th><td>{end_date}</td> 
           </tr>      
           <tr>
-            <th>Prepared by:</th><td>{prepared_by}</td>
+            <th>Prepared by:</th explorations<td>{prepared_by}</td>
           </tr>
           <tr>
             <th>Reviewed by:</th><td>{reviewed_by}</td>
@@ -363,7 +366,7 @@ def generate_html_report(finding_data, report_name, start_date, end_date, prepar
                         img_regex = r"!\[\]\((https?://[^\s]+)\)"
                         img_urls = re.findall(img_regex, step)
                         for img_url in img_urls:
-                            step = step.replace(f"![]({img_url})", f'<img class="step-image" src="{img_url}" width="1000" style="max-height: 800px;"><br>')
+                            step = step.replace(f"![]({img_url})", f'<img class="step-image" src="{img_url}" style="max-width: 100%; max-height: 800px;"><br>')
                         html_report += f"<li>{step}</li>"
             else:
                 html_report += f"<li>{steps_to_reproduce}</li>"
