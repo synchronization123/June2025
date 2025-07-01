@@ -1,56 +1,57 @@
-import pandas as pd
+import os
 import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+import hashlib
 
-# -----------------------------
-# Configuration
-# -----------------------------
-EXCEL_FILE = "engagement_lead_update.xlsx"
-TOKEN = "dhjdjjd"
-BASE_URL = "https://demo.defectdojo.org/api/v2"
-HEADERS = {
-    "Authorization": f"Token {TOKEN}",
-    "Content-Type": "application/json"
-}
+# === Configuration ===
+html_input = 'input.html'         # Your source HTML file
+html_output = 'output.html'       # Final HTML file with local image links
+image_folder = 'images'           # Folder to store downloaded images
+token = 'dhdjjdjd'                # Replace with your actual DefectDojo API token
 
-# -----------------------------
-# Load Excel and Convert Columns
-# -----------------------------
-df = pd.read_excel(EXCEL_FILE)
-df["id"] = df["id"].astype(int)
-df["lead"] = df["lead"].astype(int)
+# Create image directory if it doesn't exist
+os.makedirs(image_folder, exist_ok=True)
 
-# -----------------------------
-# Process Each Engagement
-# -----------------------------
-for index, row in df.iterrows():
-    engagement_id = int(row["id"])
-    new_lead_id = int(row["lead"])
+# Load and parse HTML
+with open(html_input, 'r', encoding='utf-8') as f:
+    soup = BeautifulSoup(f, 'html.parser')
 
-    # Step 1: GET existing engagement details
-    get_url = f"{BASE_URL}/engagements/{engagement_id}/"
-    get_response = requests.get(get_url, headers=HEADERS)
+# Loop through all <img> tags
+for img_tag in soup.find_all('img'):
+    src = img_tag.get('src')
 
-    if get_response.status_code != 200:
-        print(f"[ERROR] Failed to fetch engagement {engagement_id}: {get_response.text}")
-        continue
+    if not src or not src.startswith('http'):
+        continue  # Skip local or invalid src
 
-    engagement = get_response.json()
+    # Create a filename using hash to avoid conflicts
+    extension = '.png'  # DefectDojo files typically are images; defaulting to .png
+    filename_hash = hashlib.md5(src.encode()).hexdigest()
+    local_filename = f"{filename_hash}{extension}"
+    local_path = os.path.join(image_folder, local_filename)
 
-    # Step 2: Prepare payload with updated lead
-    update_payload = {
-        "id": engagement_id,
-        "name": engagement["name"],
-        "target_start": engagement["target_start"],
-        "target_end": engagement["target_end"],
-        "lead": new_lead_id,
-        "product": int(engagement["product"])
-    }
+    # Download if not already saved
+    if not os.path.exists(local_path):
+        try:
+            headers = {'Authorization': f'Token {token}'}
+            response = requests.get(src, headers=headers, timeout=10)
 
-    # Step 3: PUT update request
-    put_url = f"{BASE_URL}/engagements/{engagement_id}/"
-    put_response = requests.put(put_url, headers=HEADERS, json=update_payload)
+            if response.status_code == 200:
+                with open(local_path, 'wb') as out_file:
+                    out_file.write(response.content)
+                print(f"Downloaded: {src}")
+            else:
+                print(f"Failed to download {src} (HTTP {response.status_code})")
+                continue
+        except Exception as e:
+            print(f"Error downloading {src}: {e}")
+            continue
 
-    if put_response.status_code == 200:
-        print(f"[OK] Updated engagement {engagement_id} with new lead {new_lead_id}.")
-    else:
-        print(f"[ERROR] Failed to update engagement {engagement_id}: {put_response.text}")
+    # Replace <img src> with local path
+    img_tag['src'] = os.path.join(image_folder, local_filename)
+
+# Save the updated HTML
+with open(html_output, 'w', encoding='utf-8') as f:
+    f.write(str(soup))
+
+print(f"\n✅ Completed. Updated HTML saved to: {html_output}")
