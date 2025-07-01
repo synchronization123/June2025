@@ -1,6 +1,5 @@
 import os
 import requests
-import browser_cookie3
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import hashlib
@@ -9,23 +8,22 @@ import hashlib
 html_input = 'input.html'
 html_output = 'output.html'
 image_folder = 'images'
-dojo_domain = 'demo.defectdojo.org'
+cookie_name = 'sessionid'
+cookie_value = 'your_cookie_value_here'  # ← Paste from Chrome DevTools
+cookie_domain = 'demo.defectdojo.org'
 
-# Use Chrome cookies (non-admin version)
-try:
-    cookies = browser_cookie3.chrome(domain_name=dojo_domain)
-except Exception as e:
-    print(f"❌ Could not access Chrome cookies: {e}")
-    exit(1)
+# Set up session with manual cookie
+session = requests.Session()
+session.cookies.set(cookie_name, cookie_value, domain=cookie_domain)
 
-# Ensure image folder exists
+# Create image folder
 os.makedirs(image_folder, exist_ok=True)
 
-# Load and parse HTML
+# Parse HTML
 with open(html_input, 'r', encoding='utf-8') as f:
     soup = BeautifulSoup(f, 'html.parser')
 
-# Process image URLs
+# Process images
 for img_tag in soup.find_all('img'):
     src = img_tag.get('src')
     if not src or not src.startswith('http'):
@@ -37,24 +35,22 @@ for img_tag in soup.find_all('img'):
 
     if not os.path.exists(local_path):
         try:
-            response = requests.get(src, cookies=cookies, timeout=10)
-            content_type = response.headers.get('Content-Type', '')
-            if 'image' in content_type:
+            resp = session.get(src, timeout=10)
+            if 'image' in resp.headers.get('Content-Type', ''):
                 with open(local_path, 'wb') as f_out:
-                    f_out.write(response.content)
-                print(f"✅ Downloaded: {src}")
+                    f_out.write(resp.content)
+                print(f"✅ Image saved: {src}")
             else:
-                print(f"⚠️ Failed - Not an image. Got: {content_type}")
+                print(f"⚠️ Not an image (Content-Type: {resp.headers.get('Content-Type', '')})")
                 continue
         except Exception as e:
             print(f"❌ Error downloading {src}: {e}")
             continue
 
-    # Replace URL in HTML with local path
     img_tag['src'] = os.path.join(image_folder, filename)
 
 # Save updated HTML
 with open(html_output, 'w', encoding='utf-8') as f:
     f.write(str(soup))
 
-print(f"\n✅ Done. Updated HTML saved to: {html_output}")
+print(f"\n✅ Finished. Updated HTML saved to: {html_output}")
