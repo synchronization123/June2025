@@ -1,27 +1,28 @@
 import os
 import requests
-import browser_cookie3
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import hashlib
+import http.cookiejar
 
 # === Config ===
 html_input = 'input.html'
 html_output = 'output.html'
 image_folder = 'images'
-domain = 'demo.defectdojo.org'  # Your DefectDojo domain (no https)
+cookie_file = 'cookies.txt'  # Exported using browser extension
 
-# Get browser cookies for SSO auth
-cookies = browser_cookie3.load(domain_name=domain)
+# Load cookies from cookies.txt
+cookie_jar = http.cookiejar.MozillaCookieJar()
+cookie_jar.load(cookie_file, ignore_discard=True, ignore_expires=True)
 
-# Make sure image folder exists
+# Ensure output folder exists
 os.makedirs(image_folder, exist_ok=True)
 
-# Read and parse HTML
+# Load and parse the HTML
 with open(html_input, 'r', encoding='utf-8') as f:
     soup = BeautifulSoup(f, 'html.parser')
 
-# Process each image tag
+# Download images
 for img_tag in soup.find_all('img'):
     src = img_tag.get('src')
     if not src or not src.startswith('http'):
@@ -33,14 +34,13 @@ for img_tag in soup.find_all('img'):
 
     if not os.path.exists(local_path):
         try:
-            resp = requests.get(src, cookies=cookies, timeout=10)
-            if 'image' in resp.headers.get('Content-Type', ''):
+            response = requests.get(src, cookies=cookie_jar, timeout=10)
+            if 'image' in response.headers.get('Content-Type', ''):
                 with open(local_path, 'wb') as f_out:
-                    f_out.write(resp.content)
+                    f_out.write(response.content)
                 print(f"✅ Saved image: {src}")
             else:
-                print(f"⚠️ Skipped (Not image): {src}")
-                continue
+                print(f"⚠️ Skipped (not image): {src} — {response.status_code}")
         except Exception as e:
             print(f"❌ Error: {e}")
             continue
@@ -51,4 +51,4 @@ for img_tag in soup.find_all('img'):
 with open(html_output, 'w', encoding='utf-8') as f:
     f.write(str(soup))
 
-print(f"\n✅ Finished. Saved to: {html_output}")
+print(f"\n✅ All done! Output saved to: {html_output}")
