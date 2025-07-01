@@ -1,23 +1,20 @@
 import os
 import requests
-import browser_cookie3
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import hashlib
 
-# === Configuration ===
-html_input = 'input.html'         # Input HTML
-html_output = 'output.html'       # Output HTML with updated <img>
-image_folder = 'images'           # Download folder
-domain = 'demo.defectdojo.org'    # DefectDojo domain (no https)
+# === Config ===
+html_input = 'input.html'
+html_output = 'output.html'
+image_folder = 'images'
+token = 'dhdjjdjd'
+headers = {'Authorization': f'Token {token}'}
 
-# Create image folder
+# Ensure folder exists
 os.makedirs(image_folder, exist_ok=True)
 
-# Load browser cookies (Chrome/Edge/Firefox)
-cookies = browser_cookie3.load(domain_name=domain)
-
-# Load HTML
+# Read HTML
 with open(html_input, 'r', encoding='utf-8') as f:
     soup = BeautifulSoup(f, 'html.parser')
 
@@ -27,30 +24,30 @@ for img_tag in soup.find_all('img'):
     if not src or not src.startswith('http'):
         continue
 
-    # Build filename
     ext = '.png'
-    name_hash = hashlib.md5(src.encode()).hexdigest()
-    local_file = os.path.join(image_folder, f"{name_hash}{ext}")
+    hash_name = hashlib.md5(src.encode()).hexdigest() + ext
+    local_path = os.path.join(image_folder, hash_name)
 
-    if not os.path.exists(local_file):
+    if not os.path.exists(local_path):
         try:
-            response = requests.get(src, cookies=cookies, timeout=10)
-            if 'image' in response.headers.get('Content-Type', ''):
-                with open(local_file, 'wb') as f_out:
+            response = requests.get(src, headers=headers, timeout=10)
+            content_type = response.headers.get('Content-Type', '')
+
+            if 'image' in content_type and response.ok:
+                with open(local_path, 'wb') as f_out:
                     f_out.write(response.content)
-                print(f"Downloaded image: {src}")
+                print(f"✅ Saved image from: {src}")
             else:
-                print(f"Skipped (not image): {src}")
+                print(f"⚠️ Not an image or failed: {src} - Content-Type: {content_type}")
                 continue
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"❌ Error downloading {src}: {e}")
             continue
 
-    # Update HTML path
-    img_tag['src'] = os.path.join(image_folder, f"{name_hash}{ext}")
+    img_tag['src'] = os.path.join(image_folder, hash_name)
 
-# Save output HTML
+# Save new HTML
 with open(html_output, 'w', encoding='utf-8') as f:
     f.write(str(soup))
 
-print(f"\n✅ Completed. Output: {html_output}")
+print(f"\n✅ Done. Output written to {html_output}")
