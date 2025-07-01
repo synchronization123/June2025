@@ -3,26 +3,34 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import hashlib
-import http.cookiejar
 
 # === Config ===
 html_input = 'input.html'
 html_output = 'output.html'
 image_folder = 'images'
-cookie_file = 'cookies.txt'  # Exported using browser extension
+cookie_txt_path = 'cookies.txt'  # Exported from Chrome extension
 
-# Load cookies from cookies.txt
-cookie_jar = http.cookiejar.MozillaCookieJar()
-cookie_jar.load(cookie_file, ignore_discard=True, ignore_expires=True)
+# Create a requests session
+session = requests.Session()
 
-# Ensure output folder exists
+# Load cookies manually from Get cookies.txt extension format
+with open(cookie_txt_path, 'r') as f:
+    for line in f:
+        if line.strip().startswith('#') or not line.strip():
+            continue  # Skip comments and blank lines
+        parts = line.strip().split('\t')
+        if len(parts) >= 7:
+            domain, flag, path, secure, expiry, name, value = parts
+            session.cookies.set(name, value, domain=domain, path=path)
+
+# Make sure image folder exists
 os.makedirs(image_folder, exist_ok=True)
 
-# Load and parse the HTML
+# Read HTML
 with open(html_input, 'r', encoding='utf-8') as f:
     soup = BeautifulSoup(f, 'html.parser')
 
-# Download images
+# Process images
 for img_tag in soup.find_all('img'):
     src = img_tag.get('src')
     if not src or not src.startswith('http'):
@@ -34,21 +42,22 @@ for img_tag in soup.find_all('img'):
 
     if not os.path.exists(local_path):
         try:
-            response = requests.get(src, cookies=cookie_jar, timeout=10)
-            if 'image' in response.headers.get('Content-Type', ''):
+            resp = session.get(src, timeout=10)
+            if 'image' in resp.headers.get('Content-Type', ''):
                 with open(local_path, 'wb') as f_out:
-                    f_out.write(response.content)
-                print(f"✅ Saved image: {src}")
+                    f_out.write(resp.content)
+                print(f"✅ Image saved: {src}")
             else:
-                print(f"⚠️ Skipped (not image): {src} — {response.status_code}")
+                print(f"⚠️ Skipped non-image or failed: {src} | Content-Type: {resp.headers.get('Content-Type', '')}")
+                continue
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ Error fetching {src}: {e}")
             continue
 
     img_tag['src'] = os.path.join(image_folder, filename)
 
-# Save updated HTML
+# Write updated HTML
 with open(html_output, 'w', encoding='utf-8') as f:
     f.write(str(soup))
 
-print(f"\n✅ All done! Output saved to: {html_output}")
+print(f"\n✅ Done. Updated HTML saved to: {html_output}")
