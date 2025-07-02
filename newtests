@@ -1,0 +1,61 @@
+import pandas as pd
+import requests
+
+# Configuration
+API_URL = "https://demo.defectdojo.org/api/v2/tests/"
+TOKEN = "hdjdjdjdj"
+HEADERS = {
+    "Authorization": f"Token {TOKEN}",
+    "Content-Type": "application/json"
+}
+ENVIRONMENT_ID = 7
+TAGS = ["vapt_q3_2025"]
+
+# Test definitions
+TEST_DEFINITIONS = [
+    {"name": "API Test", "test_type_id": 1},
+    {"name": "Burp Scan", "test_type_id": 27},
+    {"name": "Manual Code Review", "test_type_id": 7},
+    {"name": "Pen Test", "test_type_id": 3},
+]
+
+# Load Excel file (expects a column "engagement" with engagement IDs)
+df = pd.read_excel("engagements.xlsx")  # adjust filename as needed
+
+for index, row in df.iterrows():
+    engagement_id = row["engagement"]
+
+    # Fetch engagement details to get start, end dates and lead
+    engagement_resp = requests.get(
+        f"https://demo.defectdojo.org/api/v2/engagements/{engagement_id}/",
+        headers=HEADERS
+    )
+
+    if engagement_resp.status_code != 200:
+        print(f"[ERROR] Failed to fetch engagement {engagement_id}: {engagement_resp.text}")
+        continue
+
+    engagement_data = engagement_resp.json()
+    target_start = engagement_data.get("target_start")
+    target_end = engagement_data.get("target_end")
+    lead = engagement_data.get("lead")
+
+    for test in TEST_DEFINITIONS:
+        payload = {
+            "engagement": engagement_id,
+            "test_type": test["test_type_id"],
+            "title": test["name"],
+            "scan_type": test["name"],
+            "target_start": target_start,
+            "target_end": target_end,
+            "lead": lead,
+            "environment": ENVIRONMENT_ID,
+            "tags": TAGS
+        }
+
+        response = requests.post(API_URL, headers=HEADERS, json=payload)
+
+        if response.status_code == 201:
+            print(f"[SUCCESS] Created test '{test['name']}' for engagement {engagement_id}")
+        else:
+            print(f"[FAIL] Failed to create test '{test['name']}' for engagement {engagement_id}: {response.text}")
