@@ -1,7 +1,7 @@
 import pandas as pd
 import requests
 
-# Configuration
+# === CONFIGURATION ===
 API_URL = "https://demo.defectdojo.org/api/v2/tests/"
 TOKEN = "hdjdjdjdj"
 HEADERS = {
@@ -10,8 +10,9 @@ HEADERS = {
 }
 ENVIRONMENT_ID = 7
 TAGS = ["vapt_q3_2025"]
+EXCEL_FILE = "engagements.xlsx"  # Make sure this file exists with 'engagement' column
 
-# Test definitions
+# === TEST DEFINITIONS ===
 TEST_DEFINITIONS = [
     {"name": "API Test", "test_type_id": 1},
     {"name": "Burp Scan", "test_type_id": 27},
@@ -19,13 +20,26 @@ TEST_DEFINITIONS = [
     {"name": "Pen Test", "test_type_id": 3},
 ]
 
-# Load Excel file (expects a column "engagement" with engagement IDs)
-df = pd.read_excel("engagements.xlsx")  # adjust filename as needed
+# === LOAD ENGAGEMENTS FROM EXCEL ===
+try:
+    df = pd.read_excel(EXCEL_FILE)
+except Exception as e:
+    print(f"[ERROR] Failed to read Excel file: {e}")
+    exit(1)
 
+if "engagement" not in df.columns:
+    print("[ERROR] Excel file must contain a column named 'engagement'")
+    exit(1)
+
+# === MAIN LOGIC ===
 for index, row in df.iterrows():
-    engagement_id = row["engagement"]
+    try:
+        engagement_id = int(row["engagement"])
+    except ValueError:
+        print(f"[SKIP] Invalid engagement ID at row {index}")
+        continue
 
-    # Fetch engagement details to get start, end dates and lead
+    # Get engagement details
     engagement_resp = requests.get(
         f"https://demo.defectdojo.org/api/v2/engagements/{engagement_id}/",
         headers=HEADERS
@@ -36,20 +50,24 @@ for index, row in df.iterrows():
         continue
 
     engagement_data = engagement_resp.json()
-    target_start = engagement_data.get("target_start")
-    target_end = engagement_data.get("target_end")
-    lead = engagement_data.get("lead")
+    try:
+        target_start = engagement_data["target_start"]
+        target_end = engagement_data["target_end"]
+        lead = int(engagement_data["lead"])
+    except KeyError as e:
+        print(f"[ERROR] Missing expected field in engagement {engagement_id}: {e}")
+        continue
 
     for test in TEST_DEFINITIONS:
         payload = {
-            "engagement": engagement_id,
-            "test_type": test["test_type_id"],
+            "engagement": int(engagement_id),
+            "test_type": int(test["test_type_id"]),
             "title": test["name"],
             "scan_type": test["name"],
             "target_start": target_start,
             "target_end": target_end,
-            "lead": lead,
-            "environment": ENVIRONMENT_ID,
+            "lead": int(lead),
+            "environment": int(ENVIRONMENT_ID),
             "tags": TAGS
         }
 
@@ -58,4 +76,4 @@ for index, row in df.iterrows():
         if response.status_code == 201:
             print(f"[SUCCESS] Created test '{test['name']}' for engagement {engagement_id}")
         else:
-            print(f"[FAIL] Failed to create test '{test['name']}' for engagement {engagement_id}: {response.text}")
+            print(f"[FAIL] Could not create test '{test['name']}' for engagement {engagement_id}: {response.text}")
