@@ -1,0 +1,43 @@
+import requests
+from bs4 import BeautifulSoup
+import os
+from urllib.parse import urljoin
+
+# Configuration
+BASE_URL = "https://web.crm.com/cury/images/"
+DOWNLOAD_FOLDER = "downloaded_images"
+IMAGE_EXTENSIONS = ['.jpg', '.png']
+
+# Create folder to store images
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
+# Fetch the page content
+response = requests.get(BASE_URL)
+if response.status_code != 200:
+    print(f"Failed to access {BASE_URL} (status: {response.status_code})")
+    exit()
+
+# Parse the HTML content
+soup = BeautifulSoup(response.text, 'html.parser')
+image_links = []
+
+# Extract image links from <a> tags
+for link in soup.find_all('a'):
+    href = link.get('href')
+    if href and any(href.lower().endswith(ext) for ext in IMAGE_EXTENSIONS):
+        full_url = urljoin(BASE_URL, href)
+        image_links.append(full_url)
+
+# Download each image
+for img_url in image_links:
+    file_name = img_url.split("/")[-1]
+    save_path = os.path.join(DOWNLOAD_FOLDER, file_name)
+    try:
+        img_data = requests.get(img_url).content
+        with open(save_path, 'wb') as f:
+            f.write(img_data)
+        print(f"Downloaded: {file_name}")
+    except Exception as e:
+        print(f"Failed to download {img_url} — {e}")
+
+print("\n✅ Download complete.")
