@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
 from tkcalendar import DateEntry
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
@@ -103,15 +105,15 @@ class App:
                     self.loading_label.config(text="Loading")
                 else:
                     self.loading_label.config(text="Loading" + dots + ".")
-                self.root.after(9000, update_dots)
-        self.root.after(9000, update_dots)
+                self.root.after(500, update_dots)
+        self.root.after(500, update_dots)
 
     def run_script_thread(self, start_date, end_date):
         self.progress['value'] = 0
         self.log("Starting script execution...")
 
-        start_epoch = int(start_date.timestamp() * 9000)
-        end_epoch = int(end_date.timestamp() * 9000)
+        start_epoch = int(start_date.timestamp() * 1000)
+        end_epoch = int(end_date.timestamp() * 1000)
         self.log(f"Filtering notes between {start_date.strftime('%Y-%m-%d')} and {end_date.strftime('%Y-%m-%d')} (Epoch: {start_epoch} to {end_epoch})")
         self.log("Fetching applications data...")
         self.progress['value'] = 10
@@ -139,14 +141,22 @@ class App:
             'Accept': 'application/json'
         }
 
-        base_url = 'https://contrast.abc/Contrast/api/ng/'
+        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
         url = f"{base_url}{org_uuid}/applications/filter"
         applications = []
 
         with requests.Session() as session:
             session.headers.update(headers)
+            @retry(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=4, max=10),
+                retry=retry_if_exception_type((requests.exceptions.RequestException,))
+            )
+            def make_request():
+                return session.get(url, timeout=30)
+
             try:
-                response = session.get(url, timeout=10)
+                response = make_request()
                 if response.status_code == 200:
                     data = response.json()
                     for app in data.get('applications', []):
@@ -178,33 +188,50 @@ class App:
         base_url = 'https://contrast.abc.com/Contrast/api/ng/'
         traces = []
         statuses = ['Confirmed', 'NotAProblem', 'Remediated', 'Fixed', 'Suspicious', 'Reported']
+        limit = 500  # Fetch 500 traces per request
+        delay = 0.5  # Delay between requests in seconds
 
         def fetch_traces_for_app(app):
             app_id = app['app_id']
             app_traces = []
             for status in statuses:
-                
-                url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit=9000&status={status}&sort=-last_time_seen"
-                try:
-                    response = session.get(url, timeout=10)
-                    if response.status_code == 200:
-                        data = response.json()
-                        traces_fetched = data.get('traces', [])
-                        self.log(f"Fetched {len(traces_fetched)} traces for App ID {app_id}, Status {status}")
-                        for trace in traces_fetched[:9000]:  
-                            app_traces.append({
-                                'name': app['name'],
-                                'app_id': app_id,
-                                'severity': trace.get('severity', ''),
-                                'uuid': trace.get('uuid', ''),
-                                'rule_name': trace.get('rule_name', ''),
-                                'rule_title': trace.get('rule_title', ''),
-                                'current_status': trace.get('status', '')
-                            })
-                    else:
-                        self.log(f"Error for App ID {app_id}, Status {status}: {response.status_code} - {response.text}")
-                except Exception as e:
-                    self.log(f"Exception for App ID {app_id}, Status {status}: {e}")
+                offset = 0
+                while True:
+                    url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit={limit}&offset={offset}&status={status}&sort=-last_time_seen"
+                    try:
+                        @retry(
+                            stop=stop_after_attempt(3),
+                            wait=wait_exponential(multiplier=1, min=4, max=10),
+                            retry=retry_if_exception_type((requests.exceptions.RequestException,))
+                        )
+                        def make_request():
+                            return session.get(url, timeout=30)
+
+                        response = make_request()
+                        if response.status_code == 200:
+                            data = response.json()
+                            traces_fetched = data.get('traces', [])
+                            self.log(f"Fetched {len(traces_fetched)} traces for App ID {app_id}, Status {status}, Offset {offset}")
+                            for trace in traces_fetched:
+                                app_traces.append({
+                                    'name': app['name'],
+                                    'app_id': app_id,
+                                    'severity': trace.get('severity', ''),
+                                    'uuid': trace.get('uuid', ''),
+                                    'rule_name': trace.get('rule_name', ''),
+                                    'rule_title': trace.get('rule_title', ''),
+                                    'current_status': trace.get('status', '')
+                                })
+                            if len(traces_fetched) < limit:
+                                break  # No more traces to fetch
+                            offset += limit
+                            time.sleep(delay)  # Add delay between requests
+                        else:
+                            self.log(f"Error for App ID {app_id}, Status {status}, Offset {offset}: {response.status_code} - {response.text}")
+                            break
+                    except Exception as e:
+                        self.log(f"Exception for App ID {app_id}, Status {status}, Offset {offset}: {e}")
+                        break
             return app_traces
 
         with requests.Session() as session:
@@ -215,7 +242,6 @@ class App:
         for result in results:
             traces.extend(result)
 
-        
         df = pd.DataFrame(traces)
         df.to_excel(os.path.join(script_dir, 'Traces.xlsx'), index=False)
         self.log(f"Traces saved to Traces.xlsx (Total: {len(traces)})")
@@ -235,6 +261,7 @@ class App:
         base_url = 'https://contrast.abc.com/Contrast/api/ng/'
         final_data = []
         max_notes = 0 
+        delay = 0.5  # Delay between requests in seconds
 
         def fetch_notes(trace):
             nonlocal max_notes
@@ -242,11 +269,18 @@ class App:
             trace_uuid = trace['uuid']
             url = f"{base_url}{org_uuid}/applications/{app_id}/traces/{trace_uuid}/notes"
             try:
-                response = session.get(url, timeout=10)
+                @retry(
+                    stop=stop_after_attempt(3),
+                    wait=wait_exponential(multiplier=1, min=4, max=10),
+                    retry=retry_if_exception_type((requests.exceptions.RequestException,))
+                )
+                def make_request():
+                    return session.get(url, timeout=30)
+
+                response = make_request()
                 if response.status_code == 200:
                     data = response.json()
                     notes = data.get('notes', [])
-                    
                     filtered_notes = [
                         note for note in notes
                         if start_epoch <= note.get('creation', 0) <= end_epoch
@@ -261,25 +295,23 @@ class App:
                             'Rule Title': trace['rule_title'],
                             'Current Trace Status': trace['current_status']
                         }
-                        
                         for i, note in enumerate(filtered_notes, 1):
                             trace_data[f'Previous Status {i}'] = ''
                             trace_data[f'Previous Creator {i}'] = ''
-                            trace_data[f'Creation Date {i}'] = datetime.fromtimestamp(note.get('creation', 0) / 9000).strftime('%Y-%m-%d %H:%M:%S')
+                            trace_data[f'Creation Date {i}'] = datetime.fromtimestamp(note.get('creation', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S')
                             trace_data[f'Current Creator {i}'] = note.get('creator', '')
                             trace_data[f'Current Creator {i} uid'] = note.get('creator_uid', '')
                             trace_data[f'Current Creator Note {i}'] = note.get('note', '')
-                            
                             properties = note.get('properties', [])
                             for prop in properties:
                                 if prop.get('name') == 'status.change.previous.status':
                                     trace_data[f'Previous Status {i}'] = prop.get('value', '')
                                 if prop.get('name') == 'status.changed.creator':
                                     trace_data[f'Previous Creator {i}'] = prop.get('value', '')
-                            
                             trace_data[f'Blank_{i}'] = ''
                         max_notes = max(max_notes, len(filtered_notes))
                         final_data.append(trace_data)
+                    time.sleep(delay)  # Add delay between requests
                 else:
                     self.log(f"Error for Trace {trace_uuid}: {response.status_code} - {response.text}")
             except Exception as e:
@@ -294,7 +326,6 @@ class App:
             self.log("No traces with notes found in the specified date range.")
             return
 
-        
         columns = ['Trace ID', 'Current Trace Status']
         for i in range(1, max_notes + 1):
             columns.extend([
@@ -307,23 +338,19 @@ class App:
             ])
         columns.extend(['Application Name', 'Application ID', 'Severity', 'Rule Name', 'Rule Title'])
         
-        
         df = pd.DataFrame(final_data)
         for col in columns:
             if col not in df.columns:
                 df[col] = ''
         df = df[columns]  
 
-        
         excel_file = os.path.join(script_dir, 'Contrast_Trace_Notes-DateWise.xlsx')
         df.to_excel(excel_file, index=False)
         self.log("Data Saved to Contrast_Trace_Notes-DateWise.xlsx file")
 
-        
         wb = load_workbook(excel_file)
         ws = wb.active
 
-        
         medium_border = Border(
             left=Side(style='medium'), right=Side(style='medium'),
             top=Side(style='medium'), bottom=Side(style='medium')
@@ -337,28 +364,22 @@ class App:
         left_align = Alignment(horizontal='left', vertical='center')
         bold_font = Font(bold=True)
 
-
         for col_idx in range(1, ws.max_column + 1):
             cell = ws.cell(row=1, column=col_idx)
             cell.font = bold_font
             cell.alignment = center_align if col_idx > 1 else left_align
-            cell.border = thin_border if not cell.value.startswith('Blank_') else no_border
-
+            cell.border = thin_border if not (cell.value and cell.value.startswith('Blank_')) else no_border
 
         for row_idx in range(2, ws.max_row + 1):
             for col_idx in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row_idx, column=col_idx)
                 cell.alignment = center_align if col_idx > 1 else left_align
-                
                 if 1 <= col_idx <= 2:
                     cell.border = medium_border
-               
                 elif col_idx > 2 and (col_idx - 3) % 6 < 5:
                     cell.border = medium_border
-                
                 elif col_idx > 2 and (col_idx - 3) % 6 == 5:
                     cell.border = no_border
-                
                 else:
                     cell.border = thin_border
 
