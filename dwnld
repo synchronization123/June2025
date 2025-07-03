@@ -52,7 +52,7 @@ class App:
         self.top_frame = ttk.Frame(self.root)
         self.top_frame.pack(pady=10)
         self.run_button = ttk.Button(self.top_frame, text="Run Script", command=self.start_script)
-        self.run_button.pack(side=tk.LEFT, padx=5)
+        self.run_button.packside=tk.LEFT, padx=5)
         self.loading_label = ttk.Label(self.top_frame, text="")
         self.loading_label.pack(side=tk.LEFT, padx=10)
         self.progress = ttk.Progressbar(self.top_frame, length=300, mode='determinate')
@@ -189,15 +189,24 @@ class App:
         traces = []
         statuses = ['Confirmed', 'NotAProblem', 'Remediated', 'Fixed', 'Suspicious', 'Reported']
         limit = 500  # Fetch 500 traces per request
+        max_traces_per_app = 10000  # Cap of 10,000 traces per application
         delay = 0.5  # Delay between requests in seconds
 
         def fetch_traces_for_app(app):
             app_id = app['app_id']
             app_traces = []
+            total_traces_fetched = 0  # Track total traces for this application
+
             for status in statuses:
+                if total_traces_fetched >= max_traces_per_app:
+                    self.log(f"Reached cap of {max_traces_per_app} traces for App ID {app_id}. Skipping further statuses.")
+                    break
+
                 offset = 0
-                while True:
-                    url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit={limit}&offset={offset}&status={status}&sort=-last_time_seen"
+                while total_traces_fetched < max_traces_per_app:
+                    remaining_traces = max_traces_per_app - total_traces_fetched
+                    current_limit = min(limit, remaining_traces)  # Adjust limit to not exceed cap
+                    url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit={current_limit}&offset={offset}&status={status}&sort=-last_time_seen"
                     try:
                         @retry(
                             stop=stop_after_attempt(3),
@@ -222,9 +231,10 @@ class App:
                                     'rule_title': trace.get('rule_title', ''),
                                     'current_status': trace.get('status', '')
                                 })
-                            if len(traces_fetched) < limit:
-                                break  # No more traces to fetch
-                            offset += limit
+                            total_traces_fetched += len(traces_fetched)
+                            if len(traces_fetched) < current_limit:
+                                break  # No more traces to fetch for this status
+                            offset += current_limit
                             time.sleep(delay)  # Add delay between requests
                         else:
                             self.log(f"Error for App ID {app_id}, Status {status}, Offset {offset}: {response.status_code} - {response.text}")
@@ -232,6 +242,8 @@ class App:
                     except Exception as e:
                         self.log(f"Exception for App ID {app_id}, Status {status}, Offset {offset}: {e}")
                         break
+
+            self.log(f"Total traces fetched for App ID {app_id}: {len(app_traces)}")
             return app_traces
 
         with requests.Session() as session:
@@ -272,7 +284,7 @@ class App:
                 @retry(
                     stop=stop_after_attempt(3),
                     wait=wait_exponential(multiplier=1, min=4, max=10),
-                    retry=retry_if_exception_type((requests.exceptions.RequestException,))
+                    retry=retry_if_exception_type((requests.exceptions.Request,))
                 )
                 def make_request():
                     return session.get(url, timeout=30)
