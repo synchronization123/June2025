@@ -6,7 +6,7 @@ import os
 import time
 import signal
 
-# Global process handler
+# Global state
 current_process = None
 spinner_running = False
 
@@ -21,18 +21,15 @@ def run_script(script_filename):
         spinner_running = True
         threading.Thread(target=spinner_animation).start()
 
-        command = f'cmd /c python "{script_filename}"'
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
         try:
+            # Start the script process directly without cmd, and capture with UTF-8
             current_process = subprocess.Popen(
-                command,
+                ["python", script_filename],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                shell=True,
-                startupinfo=startupinfo
+                encoding="utf-8",
+                errors="replace"  # Avoid crash on unknown characters
             )
 
             stdout, stderr = current_process.communicate()
@@ -44,6 +41,7 @@ def run_script(script_filename):
 
             output_console.insert(tk.END, "\n[Finished]\n")
             output_console.see(tk.END)
+
         except Exception as e:
             output_console.insert(tk.END, f"\n[Exception] {str(e)}\n")
         finally:
