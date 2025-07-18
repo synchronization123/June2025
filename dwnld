@@ -4,9 +4,7 @@ import subprocess
 import threading
 import os
 import time
-import signal
 
-# Global state
 current_process = None
 spinner_running = False
 
@@ -17,33 +15,23 @@ def run_script(script_filename):
         disable_buttons()
         output_console.insert(tk.END, f"\n[Running] {script_filename}...\n")
         output_console.see(tk.END)
-
         spinner_running = True
         threading.Thread(target=spinner_animation).start()
 
         try:
-            # Start the script process directly without cmd, and capture with UTF-8
+            # Launch a separate visible CMD that runs and exits after completion
             current_process = subprocess.Popen(
-                ["python", script_filename],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace"  # Avoid crash on unknown characters
+                f'start cmd /c python "{script_filename}"',
+                shell=True
             )
 
-            stdout, stderr = current_process.communicate()
-
-            if stdout:
-                output_console.insert(tk.END, stdout)
-            if stderr:
-                output_console.insert(tk.END, f"\n[Error]\n{stderr}")
-
-            output_console.insert(tk.END, "\n[Finished]\n")
+            # Wait until the cmd finishes (optional delay for visual sync)
+            current_process.wait()
+            output_console.insert(tk.END, f"[Finished] {script_filename}\n")
             output_console.see(tk.END)
 
         except Exception as e:
-            output_console.insert(tk.END, f"\n[Exception] {str(e)}\n")
+            output_console.insert(tk.END, f"[Exception] {str(e)}\n")
         finally:
             spinner_running = False
             enable_buttons()
@@ -55,10 +43,10 @@ def stop_script():
     global current_process, spinner_running
     if current_process and current_process.poll() is None:
         try:
-            current_process.terminate()
-            output_console.insert(tk.END, "\n[Stopped by user]\n")
+            subprocess.call(f"taskkill /PID {current_process.pid} /F", shell=True)
+            output_console.insert(tk.END, "[Stopped by user]\n")
         except Exception as e:
-            output_console.insert(tk.END, f"\n[Error stopping script] {str(e)}\n")
+            output_console.insert(tk.END, f"[Error stopping script] {str(e)}\n")
     spinner_running = False
     enable_buttons()
 
@@ -83,7 +71,7 @@ def enable_buttons():
     btn_comments.config(state="normal")
     btn_stop.config(state="disabled")
 
-# GUI setup
+# GUI
 root = tk.Tk()
 root.title("Jira Automation Panel")
 root.geometry("740x560")
