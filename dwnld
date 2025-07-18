@@ -1,671 +1,85 @@
-import requests
-import pandas as pd
-from datetime import datetime, timedelta
-import os
-import tkinter as tk
-from tkinter import ttk, messagebox
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from openpyxl import load_workbook
-from openpyxl.styles import Border, Side, Alignment, Font
-from tkcalendar import DateEntry
-import time
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from flask import Flask, request, render_template_string, redirect, url_for
+import sqlite3
+import pickle
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-os.chdir(script_dir)
+app = Flask(__name__)
 
-class App:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Contrast Traces Datewise Data Utility")
-        self.root.geometry("600x500")
-        self.date_frame = ttk.Frame(self.root)
-        self.date_frame.pack(pady=10)
-        ttk.Label(self.date_frame, text="Start Date:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.start_date_entry = DateEntry(
-            self.date_frame,
-            width=12,
-            background='darkblue',
-            foreground='white',
-            borderwidth=2,
-            year=datetime.now().year,
-            month=datetime.now().month,
-            day=datetime.now().day,
-            date_pattern='yyyy-mm-dd'
-        )
-        self.start_date_entry.grid(row=0, column=1, padx=5, pady=5)
+# --- DATABASE SETUP (in-memory for demo) ---
+def init_db():
+    conn = sqlite3.connect('test.db')
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT);")
+    cursor.execute("INSERT INTO users (username, password) VALUES ('admin', 'admin123');")
+    conn.commit()
+    conn.close()
 
-        ttk.Label(self.date_frame, text="End Date:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.end_date_entry = DateEntry(
-            self.date_frame,
-            width=12,
-            background='darkblue',
-            foreground='white',
-            borderwidth=2,
-            year=datetime.now().year,
-            month=datetime.now().month,
-            day=datetime.now().day,
-            date_pattern='yyyy-mm-dd'
-        )
-        self.end_date_entry.grid(row=1, column=1, padx=5, pady=5)
-        self.top_frame = ttk.Frame(self.root)
-        self.top_frame.pack(pady=10)
-        self.run_button = ttk.Button(self.top_frame, text="Run Script", command=self.start_script)
-        self.run_button.pack(side=tk.LEFT, padx=5)
-        self.loading_label = ttk.Label(self.top_frame, text="")
-        self.loading_label.pack(side=tk.LEFT, padx=10)
-        self.progress = ttk.Progressbar(self.top_frame, length=300, mode='determinate')
-        self.progress.pack(side=tk.LEFT, padx=5)
-        self.log_frame = ttk.Frame(self.root)
-        self.log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        self.log_text = tk.Text(self.log_frame, height=15, width=70, state='disabled')
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-        scrollbar = ttk.Scrollbar(self.log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text['yscrollcommand'] = scrollbar.set
+init_db()
 
-    def log(self, message):
-        self.log_text.configure(state='normal')
-        self.log_text.insert(tk.END, f"{datetime.now().strftime('%H:%M:%S')}: {message}\n")
-        self.log_text.configure(state='disabled')
-        self.log_text.see(tk.END)
+# --- LOGIN VULNERABLE TO SQL INJECTION ---
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-    def validate_dates(self):
+        # VULNERABLE SQL QUERY
+        query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
+        conn = sqlite3.connect('test.db')
+        cursor = conn.cursor()
         try:
-            start_date = self.start_date_entry.get_date()
-            end_date = self.end_date_entry.get_date()
+            cursor.execute(query)
+            user = cursor.fetchone()
+        except Exception as e:
+            return f"SQL Error: {e}"
 
-            start_date = datetime.combine(start_date, datetime.min.time())
-            end_date = datetime.combine(end_date, datetime.max.time())
-            if start_date > end_date:
-                raise ValueError("Start date cannot be after end date.")
-            return start_date, end_date
-        except ValueError as e:
-            self.log(f"Date validation error: {e}")
-            messagebox.showerror("Error", f"Invalid date selection: {e}")
-            return None, None
+        if user:
+            return redirect(url_for('dashboard', user=username))
+        else:
+            return "Invalid credentials"
+    return '''
+        <h2>Login</h2>
+        <form method="post">
+            Username: <input name="username"><br>
+            Password: <input name="password" type="password"><br>
+            <input type="submit" value="Login">
+        </form>
+    '''
 
-    def start_script(self):
-        start_date, end_date = self.validate_dates()
-        if start_date is None or end_date is None:
-            self.run_button.config(state='normal')
-            return
+# --- DASHBOARD VULNERABLE TO XSS ---
+@app.route("/dashboard")
+def dashboard():
+    user = request.args.get("user", "Guest")
+    html = f"<h1>Welcome, {user}!</h1><p>This is your dashboard.</p>"
+    return render_template_string(html)
 
-        self.run_button.config(state='disabled')
-        self.loading_label.config(text="Loading")
-        self.animate_loading()
-        threading.Thread(target=self.run_script_thread, args=(start_date, end_date), daemon=True).start()
-
-    def animate_loading(self):
-        def update_dots():
-            if self.loading_label.cget("text").startswith("Loading"):
-                dots = self.loading_label.cget("text")[7:]
-                if dots == "...":
-                    self.loading_label.config(text="Loading")
-                else:
-                    self.loading_label.config(text="Loading" + dots + ".")
-                self.root.after(500, update_dots)
-        self.root.after(500, update_dots)
-
-    def run_script_thread(self, start_date, end_date):
-        self.progress['value'] = 0
-        self.log("Starting script execution...")
-
-        start_epoch = int(start_date.timestamp() * 1000)
-        end_epoch = int(end_date.timestamp() * 1000)
-        self.log(f"Filtering notes between {start_date.strftime('%Y-%m-%d')} and {end_date.strftime('%Y-%m-%d')} (Epoch: {start_epoch} to {end_epoch})")
-        self.log("Fetching applications data...")
-        self.progress['value'] = 10
-        applications = self.fetch_applications()
-        self.progress['value'] = 33
-        self.log("Fetching traces data...")
-        traces = self.fetch_traces(applications)
-        self.progress['value'] = 66
-        self.log("Fetching notes...")
-        self.generate_final_xlsx(traces, start_epoch, end_epoch)
-        self.progress['value'] = 100
-        self.loading_label.config(text="")
-        self.run_button.config(state='normal')
-        self.log("Script execution completed.")
-        self.root.after(0, lambda: messagebox.showinfo("Success", "Data is ready in Contrast_Trace_Notes-DateWise Excel"))
-
-    def fetch_applications(self):
-        contrast_token = '<<TOKEN>>' 
-        org_uuid = '<<UUID>>'
-        api_key = '<<APIKEY>>'  
-
-        headers = {
-            'Authorization': contrast_token,
-            'Api-key': api_key,
-            'Accept': 'application/json'
-        }
-
-        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
-        url = f"{base_url}{org_uuid}/applications/filter"
-        applications = []
-
-        with requests.Session() as session:
-            session.headers.update(headers)
-            @retry(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=4, max=10),
-                retry=retry_if_exception_type((requests.exceptions.RequestException,))
-            )
-            def make_request():
-                return session.get(url, timeout=30)
-
-            try:
-                response = make_request()
-                if response.status_code == 200:
-                    data = response.json()
-                    for app in data.get('applications', []):
-                        applications.append({
-                            'name': app.get('name', ''),
-                            'app_id': app.get('app_id', '')
-                        })
-                    df = pd.DataFrame(applications)
-                    df.to_excel(os.path.join(script_dir, 'applications.xlsx'), index=False)
-                    self.log("Applications saved to applications.xlsx")
-                else:
-                    self.log(f"Error fetching applications: {response.status_code} - {response.text}")
-            except Exception as e:
-                self.log(f"Exception fetching applications: {e}")
-        
-        return applications
-
-    def fetch_traces(self, applications):
-        contrast_token = '<<TOKEN>>' 
-        org_uuid = '<<UUID>>'
-        api_key = '<<APIKEY>>'  
-
-        headers = {
-            'Authorization': contrast_token,
-            'Api-key': api_key,
-            'Accept': 'application/json'
-        }
-
-        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
-        traces = []
-        statuses = ['Confirmed', 'NotAProblem', 'Remediated', 'Fixed', 'Suspicious', 'Reported']
-        limit = 500  # Fetch 500 traces per request
-        max_traces_per_app = 10000  # Cap of 10,000 traces per application
-        delay = 0.5  # Delay between requests in seconds
-
-        def fetch_traces_for_app(app):
-            app_id = app['app_id']
-            app_traces = []
-            total_traces_fetched = 0  # Track total traces for this application
-
-            for status in statuses:
-                if total_traces_fetched >= max_traces_per_app:
-                    self.log(f"Reached cap of {max_traces_per_app} traces for App ID {app_id}. Skipping further statuses.")
-                    break
-
-                offset = 0
-                while total_traces_fetched < max_traces_per_app:
-                    remaining_traces = max_traces_per_app - total_traces_fetched
-                    current_limit = min(limit, remaining_traces)  # Adjust limit to not exceed cap
-                    url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit={current_limit}&offset={offset}&status={status}&sort=-last_time_seen"
-                    try:
-                        @retry(
-                            stop=stop_after_attempt(3),
-                            wait=wait_exponential(multiplier=1, min=4, max=10),
-                            retry=retry_if_exception_type((requests.exceptions.RequestException,))
-                        )
-                        def make_request():
-                            return session.get(url, timeout=30)
-
-                        response = make_request()
-                        if response.status_code == 200:
-                            data = response.json()
-                            traces_fetched = data.get('traces', [])
-                            self.log(f"Fetched {len(traces_fetched)} traces for App ID {app_id}, Status {status}, Offset {offset}")
-                            for trace in traces_fetched:
-                                app_traces.append({
-                                    'name': app['name'],
-                                    'app_id': app_id,
-                                    'severity': trace.get('severity', ''),
-                                    'uuid': trace.get('uuid', ''),
-                                    'rule_name': trace.get('rule_name', ''),
-                                    'rule_title': trace.get('rule_title', ''),
-                                    'current_status': trace.get('status', '')
-                                })
-                            total_traces_fetched += len(traces_fetched)
-                            if len(traces_fetched) < current_limit:
-                                break  # No more traces to fetch for this status
-                            offset += current_limit
-                            time.sleep(delay)  # Add delay between requests
-                        else:
-                            self.log(f"Error for App ID {app_id}, Status {status}, Offset {offset}: {response.status_code} - {response.text}")
-                            break
-                    except Exception as e:
-                        self.log(f"Exception for App ID {app_id}, Status {status}, Offset {offset}: {e}")
-                        break
-
-            self.log(f"Total traces fetched for App ID {app_id}: {len(app_traces)}")
-            return app_traces
-
-        with requests.Session() as session:
-            session.headers.update(headers)
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                results = list(executor.map(fetch_traces_for_app, applications))
-
-        for result in results:
-            traces.extend(result)
-
-        df = pd.DataFrame(traces)
-        df.to_excel(os.path.join(script_dir, 'Traces.xlsx'), index=False)
-        self.log(f"Traces saved to Traces.xlsx (Total: {len(traces)})")
-        return traces
-
-    def generate_final_xlsx(self, traces, start kicsit
-
-System: The user's message was cut off. Based on the context, they likely intended to include the rest of the code or ask for the complete corrected code. Since the error was related to `requests.exceptions.Request` in the `@retry` decorator, and the user provided the code up to the `fetch_traces` function, I'll provide the complete corrected code, ensuring the `generate_final_xlsx` function also uses `requests.exceptions.RequestException`. I'll maintain all previous fixes, including the 10,000 traces per application cap and the pagination logic.
-
-### Corrected Code
-```python
-import requests
-import pandas as pd
-from datetime import datetime, timedelta
-import os
-import tkinter as tk
-from tkinter import ttk, messagebox
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from openpyxl import load_workbook
-from openpyxl.styles import Border, Side, Alignment, Font
-from tkcalendar import DateEntry
-import time
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-os.chdir(script_dir)
-
-class App:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Contrast Traces Datewise Data Utility")
-        self.root.geometry("600x500")
-        self.date_frame = ttk.Frame(self.root)
-        self.date_frame.pack(pady=10)
-        ttk.Label(self.date_frame, text="Start Date:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.start_date_entry = DateEntry(
-            self.date_frame,
-            width=12,
-            background='darkblue',
-            foreground='white',
-            borderwidth=2,
-            year=datetime.now().year,
-            month=datetime.now().month,
-            day=datetime.now().day,
-            date_pattern='yyyy-mm-dd'
-        )
-        self.start_date_entry.grid(row=0, column=1, padx=5, pady=5)
-
-        ttk.Label(self.date_frame, text="End Date:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.end_date_entry = DateEntry(
-            self.date_frame,
-            width=12,
-            background='darkblue',
-            foreground='white',
-            borderwidth=2,
-            year=datetime.now().year,
-            month=datetime.now().month,
-            day=datetime.now().day,
-            date_pattern='yyyy-mm-dd'
-        )
-        self.end_date_entry.grid(row=1, column=1, padx=5, pady=5)
-        self.top_frame = ttk.Frame(self.root)
-        self.top_frame.pack(pady=10)
-        self.run_button = ttk.Button(self.top_frame, text="Run Script", command=self.start_script)
-        self.run_button.pack(side=tk.LEFT, padx=5)
-        self.loading_label = ttk.Label(self.top_frame, text="")
-        self.loading_label.pack(side=tk.LEFT, padx=10)
-        self.progress = ttk.Progressbar(self.top_frame, length=300, mode='determinate')
-        self.progress.pack(side=tk.LEFT, padx=5)
-        self.log_frame = ttk.Frame(self.root)
-        self.log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        self.log_text = tk.Text(self.log_frame, height=15, width=70, state='disabled')
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-        scrollbar = ttk.Scrollbar(self.log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text['yscrollcommand'] = scrollbar.set
-
-    def log(self, message):
-        self.log_text.configure(state='normal')
-        self.log_text.insert(tk.END, f"{datetime.now().strftime('%H:%M:%S')}: {message}\n")
-        self.log_text.configure(state='disabled')
-        self.log_text.see(tk.END)
-
-    def validate_dates(self):
+# --- INSECURE DESERIALIZATION ---
+@app.route("/deserialize", methods=["GET", "POST"])
+def deserialize():
+    if request.method == "POST":
+        data = request.form.get("data")
         try:
-            start_date = self.start_date_entry.get_date()
-            end_date = self.end_date_entry.get_date()
+            obj = pickle.loads(bytes.fromhex(data))
+            return f"Deserialized: {obj}"
+        except Exception as e:
+            return f"Error: {e}"
+    return '''
+        <h2>Deserialize Data</h2>
+        <form method="post">
+            Hex Pickle Data: <input name="data"><br>
+            <input type="submit" value="Submit">
+        </form>
+    '''
 
-            start_date = datetime.combine(start_date, datetime.min.time())
-            end_date = datetime.combine(end_date, datetime.max.time())
-            if start_date > end_date:
-                raise ValueError("Start date cannot be after end date.")
-            return start_date, end_date
-        except ValueError as e:
-            self.log(f"Date validation error: {e}")
-            messagebox.showerror("Error", f"Invalid date selection: {e}")
-            return None, None
+# --- OPEN REDIRECT ---
+@app.route("/redirect")
+def open_redirect():
+    target = request.args.get("next", "/")
+    return redirect(target)
 
-    def start_script(self):
-        start_date, end_date = self.validate_dates()
-        if start_date is None or end_date is None:
-            self.run_button.config(state='normal')
-            return
-
-        self.run_button.config(state='disabled')
-        self.loading_label.config(text="Loading")
-        self.animate_loading()
-        threading.Thread(target=self.run_script_thread, args=(start_date, end_date), daemon=True).start()
-
-    def animate_loading(self):
-        def update_dots():
-            if self.loading_label.cget("text").startswith("Loading"):
-                dots = self.loading_label.cget("text")[7:]
-                if dots == "...":
-                    self.loading_label.config(text="Loading")
-                else:
-                    self.loading_label.config(text="Loading" + dots + ".")
-                self.root.after(500, update_dots)
-        self.root.after(500, update_dots)
-
-    def run_script_thread(self, start_date, end_date):
-        self.progress['value'] = 0
-        self.log("Starting script execution...")
-
-        start_epoch = int(start_date.timestamp() * 1000)
-        end_epoch = int(end_date.timestamp() * 1000)
-        self.log(f"Filtering notes between {start_date.strftime('%Y-%m-%d')} and {end_date.strftime('%Y-%m-%d')} (Epoch: {start_epoch} to {end_epoch})")
-        self.log("Fetching applications data...")
-        self.progress['value'] = 10
-        applications = self.fetch_applications()
-        self.progress['value'] = 33
-        self.log("Fetching traces data...")
-        traces = self.fetch_traces(applications)
-        self.progress['value'] = 66
-        self.log("Fetching notes...")
-        self.generate_final_xlsx(traces, start_epoch, end_epoch)
-        self.progress['value'] = 100
-        self.loading_label.config(text="")
-        self.run_button.config(state='normal')
-        self.log("Script execution completed.")
-        self.root.after(0, lambda: messagebox.showinfo("Success", "Data is ready in Contrast_Trace_Notes-DateWise Excel"))
-
-    def fetch_applications(self):
-        contrast_token = '<<TOKEN>>' 
-        org_uuid = '<<UUID>>'
-        api_key = '<<APIKEY>>'  
-
-        headers = {
-            'Authorization': contrast_token,
-            'Api-key': api_key,
-            'Accept': 'application/json'
-        }
-
-        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
-        url = f"{base_url}{org_uuid}/applications/filter"
-        applications = []
-
-        with requests.Session() as session:
-            session.headers.update(headers)
-            @retry(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=4, max=10),
-                retry=retry_if_exception_type((requests.exceptions.RequestException,))
-            )
-            def make_request():
-                return session.get(url, timeout=30)
-
-            try:
-                response = make_request()
-                if response.status_code == 200:
-                    data = response.json()
-                    for app in data.get('applications', []):
-                        applications.append({
-                            'name': app.get('name', ''),
-                            'app_id': app.get('app_id', '')
-                        })
-                    df = pd.DataFrame(applications)
-                    df.to_excel(os.path.join(script_dir, 'applications.xlsx'), index=False)
-                    self.log("Applications saved to applications.xlsx")
-                else:
-                    self.log(f"Error fetching applications: {response.status_code} - {response.text}")
-            except Exception as e:
-                self.log(f"Exception fetching applications: {e}")
-        
-        return applications
-
-    def fetch_traces(self, applications):
-        contrast_token = '<<TOKEN>>' 
-        org_uuid = '<<UUID>>'
-        api_key = '<<APIKEY>>'  
-
-        headers = {
-            'Authorization': contrast_token,
-            'Api-key': api_key,
-            'Accept': 'application/json'
-        }
-
-        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
-        traces = []
-        statuses = ['Confirmed', 'NotAProblem', 'Remediated', 'Fixed', 'Suspicious', 'Reported']
-        limit = 500  # Fetch 500 traces per request
-        max_traces_per_app = 10000  # Cap of 10,000 traces per application
-        delay = 0.5  # Delay between requests in seconds
-
-        def fetch_traces_for_app(app):
-            app_id = app['app_id']
-            app_traces = []
-            total_traces_fetched = 0  # Track total traces for this application
-
-            for status in statuses:
-                if total_traces_fetched >= max_traces_per_app:
-                    self.log(f"Reached cap of {max_traces_per_app} traces for App ID {app_id}. Skipping further statuses.")
-                    break
-
-                offset = 0
-                while total_traces_fetched < max_traces_per_app:
-                    remaining_traces = max_traces_per_app - total_traces_fetched
-                    current_limit = min(limit, remaining_traces)  # Adjust limit to not exceed cap
-                    url = f"{base_url}{org_uuid}/traces/{app_id}/filter?limit={current_limit}&offset={offset}&status={status}&sort=-last_time_seen"
-                    try:
-                        @retry(
-                            stop=stop_after_attempt(3),
-                            wait=wait_exponential(multiplier=1, min=4, max=10),
-                            retry=retry_if_exception_type((requests.exceptions.RequestException,))
-                        )
-                        def make_request():
-                            return session.get(url, timeout=30)
-
-                        response = make_request()
-                        if response.status_code == 200:
-                            data = response.json()
-                            traces_fetched = data.get('traces', [])
-                            self.log(f"Fetched {len(traces_fetched)} traces for App ID {app_id}, Status {status}, Offset {offset}")
-                            for trace in traces_fetched:
-                                app_traces.append({
-                                    'name': app['name'],
-                                    'app_id': app_id,
-                                    'severity': trace.get('severity', ''),
-                                    'uuid': trace.get('uuid', ''),
-                                    'rule_name': trace.get('rule_name', ''),
-                                    'rule_title': trace.get('rule_title', ''),
-                                    'current_status': trace.get('status', '')
-                                })
-                            total_traces_fetched += len(traces_fetched)
-                            if len(traces_fetched) < current_limit:
-                                break  # No more traces to fetch for this status
-                            offset += current_limit
-                            time.sleep(delay)  # Add delay between requests
-                        else:
-                            self.log(f"Error for App ID {app_id}, Status {status}, Offset {offset}: {response.status_code} - {response.text}")
-                            break
-                    except Exception as e:
-                        self.log(f"Exception for App ID {app_id}, Status {status}, Offset {offset}: {e}")
-                        break
-
-            self.log(f"Total traces fetched for App ID {app_id}: {len(app_traces)}")
-            return app_traces
-
-        with requests.Session() as session:
-            session.headers.update(headers)
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                results = list(executor.map(fetch_traces_for_app, applications))
-
-        for result in results:
-            traces.extend(result)
-
-        df = pd.DataFrame(traces)
-        df.to_excel(os.path.join(script_dir, 'Traces.xlsx'), index=False)
-        self.log(f"Traces saved to Traces.xlsx (Total: {len(traces)})")
-        return traces
-
-    def generate_final_xlsx(self, traces, start_epoch, end_epoch):
-        contrast_token = '<<TOKEN>>' 
-        org_uuid = '<<UUID>>'
-        api_key = '<<APIKEY>>'  
-
-        headers = {
-            'Authorization': contrast_token,
-            'Api-key': api_key,
-            'Accept': 'application/json'
-        }
-
-        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
-        final_data = []
-        max_notes = 0 
-        delay = 0.5  # Delay between requests in seconds
-
-        def fetch_notes(trace):
-            nonlocal max_notes
-            app_id = trace['app_id']
-            trace_uuid = trace['uuid']
-            url = f"{base_url}{org_uuid}/applications/{app_id}/traces/{trace_uuid}/notes"
-            try:
-                @retry(
-                    stop=stop_after_attempt(3),
-                    wait=wait_exponential(multiplier=1, min=4, max=10),
-                    retry=retry_if_exception_type((requests.exceptions.RequestException,))
-                )
-                def make_request():
-                    return session.get(url, timeout=30)
-
-                response = make_request()
-                if response.status_code == 200:
-                    data = response.json()
-                    notes = data.get('notes', [])
-                    filtered_notes = [
-                        note for note in notes
-                        if start_epoch <= note.get('creation', 0) <= end_epoch
-                    ]
-                    if filtered_notes: 
-                        trace_data = {
-                            'Application Name': trace['name'],
-                            'Application ID': trace['app_id'],
-                            'Severity': trace['severity'],
-                            'Trace ID': trace['uuid'],
-                            'Rule Name': trace['rule_name'],
-                            'Rule Title': trace['rule_title'],
-                            'Current Trace Status': trace['current_status']
-                        }
-                        for i, note in enumerate(filtered_notes, 1):
-                            trace_data[f'Previous Status {i}'] = ''
-                            trace_data[f'Previous Creator {i}'] = ''
-                            trace_data[f'Creation Date {i}'] = datetime.fromtimestamp(note.get('creation', 0) / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                            trace_data[f'Current Creator {i}'] = note.get('creator', '')
-                            trace_data[f'Current Creator {i} uid'] = note.get('creator_uid', '')
-                            trace_data[f'Current Creator Note {i}'] = note.get('note', '')
-                            properties = note.get('properties', [])
-                            for prop in properties:
-                                if prop.get('name') == 'status.change.previous.status':
-                                    trace_data[f'Previous Status {i}'] = prop.get('value', '')
-                                if prop.get('name') == 'status.changed.creator':
-                                    trace_data[f'Previous Creator {i}'] = prop.get('value', '')
-                            trace_data[f'Blank_{i}'] = ''
-                        max_notes = max(max_notes, len(filtered_notes))
-                        final_data.append(trace_data)
-                    time.sleep(delay)  # Add delay between requests
-                else:
-                    self.log(f"Error for Trace {trace_uuid}: {response.status_code} - {response.text}")
-            except Exception as e:
-                self.log(f"Exception for Trace {trace_uuid}: {e}")
-
-        with requests.Session() as session:
-            session.headers.update(headers)
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                executor.map(fetch_notes, traces)
-
-        if not final_data:
-            self.log("No traces with notes found in the specified date range.")
-            return
-
-        columns = ['Trace ID', 'Current Trace Status']
-        for i in range(1, max_notes + 1):
-            columns.extend([
-                f'Previous Status {i}',
-                f'Creation Date {i}',
-                f'Current Creator {i}',
-                f'Current Creator {i} uid',
-                f'Current Creator Note {i}',
-                f'Blank_{i}'
-            ])
-        columns.extend(['Application Name', 'Application ID', 'Severity', 'Rule Name', 'Rule Title'])
-        
-        df = pd.DataFrame(final_data)
-        for col in columns:
-            if col not in df.columns:
-                df[col] = ''
-        df = df[columns]  
-
-        excel_file = os.path.join(script_dir, 'Contrast_Trace_Notes-DateWise.xlsx')
-        df.to_excel(excel_file, index=False)
-        self.log("Data Saved to Contrast_Trace_Notes-DateWise.xlsx file")
-
-        wb = load_workbook(excel_file)
-        ws = wb.active
-
-        medium_border = Border(
-            left=Side(style='medium'), right=Side(style='medium'),
-            top=Side(style='medium'), bottom=Side(style='medium')
-        )
-        thin_border = Border(
-            left=Side(style='thin'), right=Side(style='thin'),
-            top=Side(style='thin'), bottom=Side(style='thin')
-        )
-        no_border = Border()  
-        center_align = Alignment(horizontal='center', vertical='center')
-        left_align = Alignment(horizontal='left', vertical='center')
-        bold_font = Font(bold=True)
-
-        for col_idx in range(1, ws.max_column + 1):
-            cell = ws.cell(row=1, column=col_idx)
-            cell.font = bold_font
-            cell.alignment = center_align if col_idx > 1 else left_align
-            cell.border = thin_border if not (cell.value and cell.value.startswith('Blank_')) else no_border
-
-        for row_idx in range(2, ws.max_row + 1):
-            for col_idx in range(1, ws.max_column + 1):
-                cell = ws.cell(row=row_idx, column=col_idx)
-                cell.alignment = center_align if col_idx > 1 else left_align
-                if 1 <= col_idx <= 2:
-                    cell.border = medium_border
-                elif col_idx > 2 and (col_idx - 3) % 6 < 5:
-                    cell.border = medium_border
-                elif col_idx > 2 and (col_idx - 3) % 6 == 5:
-                    cell.border = no_border
-                else:
-                    cell.border = thin_border
-
-        wb.save(excel_file)
-        self.log("Formatting applied")
+# --- HARDCODED CREDENTIALS ---
+@app.route("/secret")
+def secret():
+    return "API Key: hardcodedapikey123456789"
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
+    app.run(debug=True)
