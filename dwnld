@@ -1,85 +1,57 @@
-from flask import Flask, request, render_template_string, redirect, url_for
-import sqlite3
-import pickle
+import tkinter as tk
+from tkinter import scrolledtext, messagebox
+import subprocess
+import threading
+import os
 
-app = Flask(__name__)
-
-# --- DATABASE SETUP (in-memory for demo) ---
-def init_db():
-    conn = sqlite3.connect('test.db')
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT);")
-    cursor.execute("INSERT INTO users (username, password) VALUES ('admin', 'admin123');")
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# --- LOGIN VULNERABLE TO SQL INJECTION ---
-@app.route("/", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-
-        # VULNERABLE SQL QUERY
-        query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
-        conn = sqlite3.connect('test.db')
-        cursor = conn.cursor()
+# Function to run script and capture output
+def run_script(script_name):
+    def thread_function():
         try:
-            cursor.execute(query)
-            user = cursor.fetchone()
+            output_console.insert(tk.END, f"\n[Running] {script_name}...\n")
+            output_console.see(tk.END)
+
+            # Execute the script
+            result = subprocess.run(
+                ["python", script_name], 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                text=True
+            )
+
+            # Display output
+            output_console.insert(tk.END, result.stdout)
+            if result.stderr:
+                output_console.insert(tk.END, f"\n[Error]\n{result.stderr}")
+            output_console.insert(tk.END, "\n[Finished]\n")
+            output_console.see(tk.END)
+
         except Exception as e:
-            return f"SQL Error: {e}"
+            output_console.insert(tk.END, f"\n[Exception] {str(e)}\n")
+            output_console.see(tk.END)
 
-        if user:
-            return redirect(url_for('dashboard', user=username))
-        else:
-            return "Invalid credentials"
-    return '''
-        <h2>Login</h2>
-        <form method="post">
-            Username: <input name="username"><br>
-            Password: <input name="password" type="password"><br>
-            <input type="submit" value="Login">
-        </form>
-    '''
+    threading.Thread(target=thread_function).start()
 
-# --- DASHBOARD VULNERABLE TO XSS ---
-@app.route("/dashboard")
-def dashboard():
-    user = request.args.get("user", "Guest")
-    html = f"<h1>Welcome, {user}!</h1><p>This is your dashboard.</p>"
-    return render_template_string(html)
+# GUI window
+root = tk.Tk()
+root.title("Jira Automation Panel")
+root.geometry("700x500")
+root.resizable(False, False)
 
-# --- INSECURE DESERIALIZATION ---
-@app.route("/deserialize", methods=["GET", "POST"])
-def deserialize():
-    if request.method == "POST":
-        data = request.form.get("data")
-        try:
-            obj = pickle.loads(bytes.fromhex(data))
-            return f"Deserialized: {obj}"
-        except Exception as e:
-            return f"Error: {e}"
-    return '''
-        <h2>Deserialize Data</h2>
-        <form method="post">
-            Hex Pickle Data: <input name="data"><br>
-            <input type="submit" value="Submit">
-        </form>
-    '''
+# Buttons frame
+btn_frame = tk.Frame(root)
+btn_frame.pack(pady=10)
 
-# --- OPEN REDIRECT ---
-@app.route("/redirect")
-def open_redirect():
-    target = request.args.get("next", "/")
-    return redirect(target)
+btn1 = tk.Button(btn_frame, text="Fetch Jira", width=20, command=lambda: run_script("fetch_jira.py"))
+btn2 = tk.Button(btn_frame, text="Update Component", width=20, command=lambda: run_script("update_component.py"))
+btn3 = tk.Button(btn_frame, text="Fetch Comments", width=20, command=lambda: run_script("fetch_comments.py"))
 
-# --- HARDCODED CREDENTIALS ---
-@app.route("/secret")
-def secret():
-    return "API Key: hardcodedapikey123456789"
+btn1.grid(row=0, column=0, padx=10)
+btn2.grid(row=0, column=1, padx=10)
+btn3.grid(row=0, column=2, padx=10)
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# Console Output Area
+output_console = scrolledtext.ScrolledText(root, width=85, height=25, wrap=tk.WORD, bg="#1e1e1e", fg="white", font=("Consolas", 10))
+output_console.pack(padx=10, pady=10)
+
+root.mainloop()
