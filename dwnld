@@ -1,104 +1,153 @@
-import tkinter as tk
-from tkinter import scrolledtext
-import subprocess
-import threading
+import requests
+import pandas as pd
+import os
 import time
+from datetime import datetime
+from openpyxl import Workbook
+from openpyxl.styles import Border, Side, Alignment, Font
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import logging
 
-current_process = None
-spinner_running = False
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('library_download.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-def run_script(script_filename):
-    def worker():
-        global current_process, spinner_running
+# Set working directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
 
-        disable_buttons()
-        output_console.insert(tk.END, f"\n[Running] {script_filename}...\n")
-        output_console.see(tk.END)
-        spinner_running = True
-        threading.Thread(target=spinner_animation).start()
+def fetch_libraries(contrast_token, org_uuid, api_key):
+    headers = {
+        'Authorization': contrast_token,
+        'Api-key': api_key,
+        'Accept': 'application/json'
+    }
 
-        # Build the cmd command to open new window, run script, then close
-        # /c closes window after execution
-        cmd_command = f'start cmd /c python "{script_filename}"'
+    base_url = 'https://contrast.abc.com/Contrast/api/ng/'
+    libraries = []
+    limit = 500  # Number of libraries per request
+    offset = 0
+    delay = 0.5  # Delay between requests in seconds
 
-        try:
-            # Launch CMD window visibly
-            current_process = subprocess.Popen(cmd_command, shell=True)
+    with requests.Session() as session:
+        session.headers.update(headers)
+        while True:
+            url = f"{base_url}{org_uuid}/libraries?limit={limit}&offset={offset}"
+            logger.info(f"Fetching libraries with offset {offset} and limit {limit}")
+            
+            @retry(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=4, max=10),
+                retry=retry_if_exception_type((requests.exceptions.RequestException,))
+            )
+            def make_request():
+                return session.get(url, timeout=30)
 
-            # Poll process every 0.3s until finished
-            while current_process.poll() is None:
-                time.sleep(0.3)
+            try:
+                response = make_request()
+                if response.status_code == 200:
+                    data = response.json()
+                    libraries_fetched = data.get('libraries', [])
+                    logger.info(f"Fetched {len(libraries_fetched)} libraries at offset {offset}")
+                    
+                    for library in libraries_fetched:
+                        libraries.append({
+                            'Library Name': library.get('name', ''),
+                            'Version': library.get('version', ''),
+                            'Score': library.get('score', 'N/A'),  # Public libraries have A-F score, private have N/A
+                            'Vulnerabilities': library.get('total_vulnerabilities', 0),
+                            'Language': library.get('language', ''),
+                            'Hash': library.get('hash', ''),
+                            'Type': 'Public' if library.get('score') else 'Private',  # Based on Contrast documentation
+                            'Last Seen': library.get('last_seen', '')
+                        })
 
-            spinner_running = False
-            output_console.insert(tk.END, f"[Finished] {script_filename}\n")
-            output_console.see(tk.END)
+                    if len(libraries_fetched) < limit:
+                        logger.info("No more libraries to fetch")
+                        break
+                    offset += limit
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Error fetching libraries: {response.status_code} - {response.text}")
+                    break
+            except Exception as e:
+                logger.error(f"Exception fetching libraries at offset {offset}: {e}")
+                break
 
-        except Exception as e:
-            spinner_running = False
-            output_console.insert(tk.END, f"[Exception] {str(e)}\n")
-            output_console.see(tk.END)
-        finally:
-            enable_buttons()
-            current_process = None
+    return libraries
 
-    threading.Thread(target=worker).start()
+def save_to_excel(libraries):
+    if not libraries:
+        logger.warning("No libraries to save")
+        return
 
-def stop_script():
-    global current_process, spinner_running
-    if current_process and current_process.poll() is None:
-        try:
-            current_process.terminate()
-            output_console.insert(tk.END, "[Stopped by user]\n")
-            output_console.see(tk.END)
-        except Exception as e:
-            output_console.insert(tk.END, f"[Error stopping script] {str(e)}\n")
-            output_console.see(tk.END)
-    spinner_running = False
-    enable_buttons()
+    # Create DataFrame
+    df = pd.DataFrame(libraries)
+    
+    # Define output file
+    excel_file = os.path.join(script_dir, 'Libraries.xlsx')
+    
+    # Save to Excel
+    df.to_excel(excel_file, index=False)
+    logger.info(f"Libraries saved to {excel_file} (Total: {len(libraries)})")
 
-def spinner_animation():
-    spinner_chars = ['|', '/', '-', '\\']
-    idx = 0
-    while spinner_running:
-        spinner_label.config(text=f"Processing... {spinner_chars[idx % len(spinner_chars)]}")
-        idx += 1
-        time.sleep(0.1)
-    spinner_label.config(text="")
+    # Format Excel file
+    wb = Workbook()
+    wb = load_workbook(excel_file)
+    ws = wb.active
 
-def disable_buttons():
-    btn_fetch.config(state="disabled")
-    btn_update.config(state="disabled")
-    btn_comments.config(state="disabled")
-    btn_stop.config(state="normal")
+    # Define styles
+    medium_border = Border(
+        left=Side(style='medium'), right=Side(style='medium'),
+        top=Side(style='medium'), bottom=Side(style='medium')
+    )
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    center_align = Alignment(horizontal='center', vertical='center')
+    left_align = Alignment(horizontal='left', vertical='center')
+    bold_font = Font(bold=True)
 
-def enable_buttons():
-    btn_fetch.config(state="normal")
-    btn_update.config(state="normal")
-    btn_comments.config(state="normal")
-    btn_stop.config(state="disabled")
+    # Format header
+    for col_idx in range(1, ws.max_column + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = bold_font
+        cell.alignment = center_align if col_idx > 1 else left_align
+        cell.border = thin_border
 
-root = tk.Tk()
-root.title("Jira Automation Panel")
-root.geometry("740x560")
-root.resizable(False, False)
+    # Format data rows
+    for row_idx in range(2, ws.max_row + 1):
+        for col_idx in range(1, ws.max_column + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.alignment = center_align if col_idx > 1 else left_align
+            cell.border = thin_border
 
-btn_frame = tk.Frame(root)
-btn_frame.pack(pady=10)
+    wb.save(excel_file)
+    logger.info("Excel formatting applied")
 
-btn_fetch = tk.Button(btn_frame, text="Fetch Jira", width=20, command=lambda: run_script("fetch_jira.python"))
-btn_update = tk.Button(btn_frame, text="Update Component", width=20, command=lambda: run_script("update_component.python"))
-btn_comments = tk.Button(btn_frame, text="Fetch Comments", width=20, command=lambda: run_script("fetch_comments.python"))
-btn_stop = tk.Button(btn_frame, text="⛔ Stop", width=15, state="disabled", command=stop_script)
+def main():
+    # API credentials
+    contrast_token = '<<TOKEN>>'
+    org_uuid = '<<UUID>>'
+    api_key = '<<APIKEY>>'
 
-btn_fetch.grid(row=0, column=0, padx=10)
-btn_update.grid(row=0, column=1, padx=10)
-btn_comments.grid(row=0, column=2, padx=10)
-btn_stop.grid(row=0, column=3, padx=10)
+    logger.info("Starting library download script...")
 
-spinner_label = tk.Label(root, text="", font=("Consolas", 12), fg="green")
-spinner_label.pack()
+    # Fetch libraries
+    libraries = fetch_libraries(contrast_token, org_uuid, api_key)
 
-output_console = scrolledtext.ScrolledText(root, width=88, height=25, wrap=tk.WORD, bg="#1e1e1e", fg="white", font=("Consolas", 10))
-output_console.pack(padx=10, pady=10)
+    # Save to Excel
+    save_to_excel(libraries)
 
-root.mainloop()
+    logger.info("Script execution completed")
+
+if __name__ == "__main__":
+    main()
