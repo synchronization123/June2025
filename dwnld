@@ -36,9 +36,16 @@ class BitbucketBlameGUI:
         self.repo_var = tk.StringVar()
         self.repo_dropdown = ttk.Combobox(self.root, textvariable=self.repo_var, state="readonly")
         self.repo_dropdown.pack(pady=5)
+        self.repo_dropdown.bind("<<ComboboxSelected>>", self.populate_branches)
+
+        # Branch Dropdown
+        tk.Label(self.root, text="Select Branch/Tag:").pack(pady=5)
+        self.branch_var = tk.StringVar()
+        self.branch_dropdown = ttk.Combobox(self.root, textvariable=self.branch_var, state="readonly")
+        self.branch_dropdown.pack(pady=5)
 
         # Filename Input
-        tk.Label(self.root, text="Enter Filename (e.g., README.md):").pack(pady=5)
+        tk.Label(self.root, text="Enter Filename (e.g., src/main.py):").pack(pady=5)
         self.filename_entry = tk.Entry(self.root)
         self.filename_entry.pack(pady=5)
 
@@ -109,8 +116,33 @@ class BitbucketBlameGUI:
             self.repo_dropdown["values"] = repo_names
             if repo_names:
                 self.repo_var.set(repo_names[0])
+                self.populate_branches(None)
         except requests.RequestException as e:
             messagebox.showerror("Error", f"Failed to fetch repositories: {str(e)}")
+
+    def populate_branches(self, event):
+        project_key = self.project_var.get()
+        repo_name = self.repo_var.get()
+        if not project_key or not repo_name:
+            return
+        try:
+            # Fetch branches
+            branches = []
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/branches?limit=100", headers=self.headers)
+            response.raise_for_status()
+            branches.extend([branch["displayId"] for branch in response.json().get("values", [])])
+
+            # Fetch tags
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/tags?limit=100", headers=self.headers)
+            response.raise_for_status()
+            branches.extend([tag["displayId"] for tag in response.json().get("values", [])])
+
+            self.branch_dropdown["values"] = branches
+            if branches:
+                # Set 'develop' as default if it exists
+                self.branch_var.set("develop" if "develop" in branches else branches[0])
+        except requests.RequestException as e:
+            messagebox.showerror("Error", f"Failed to fetch branches/tags: {str(e)}")
 
     def validate_date(self, date_str):
         if not date_str:
@@ -121,10 +153,11 @@ class BitbucketBlameGUI:
             messagebox.showerror("Error", "Invalid date format. Use YYYY-MM-DD.")
             return False
 
-    def check_file_exists(self, project_key, repo_name, filename):
+    def check_file_exists(self, project_key, repo_name, filename, branch):
         try:
-            # Check if file exists in the develop branch
-            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/files/{filename}?at=refs%2Fheads%2Fdevelop"
+            # Encode branch for URL (handles refs/heads/ or refs/tags/)
+            encoded_branch = branch.replace("/", "%2F")
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/files/{filename}?at={encoded_branch}"
             response = requests.get(url, headers=self.headers)
             if response.status_code == 404:
                 return False
@@ -138,13 +171,14 @@ class BitbucketBlameGUI:
         project_key = self.project_var.get()
         repo_name = self.repo_var.get()
         filename = self.filename_entry.get().strip()
+        branch = self.branch_var.get()
         author = self.author_entry.get().strip()
         start_date = self.start_date_entry.get().strip()
         end_date = self.end_date_entry.get().strip()
 
         # Validate inputs
-        if not project_key or not repo_name or not filename:
-            messagebox.showerror("Error", "Please select a project, repository, and enter a filename.")
+        if not project_key or not repo_name or not filename or not branch:
+            messagebox.showerror("Error", "Please select a project, repository, branch, and enter a filename.")
             return
 
         # Validate date inputs
@@ -156,23 +190,28 @@ class BitbucketBlameGUI:
             messagebox.showerror("Error", "Start date must be before end date.")
             return
 
-        # Check if file exists in the develop branch
-        if not self.check_file_exists(project_key, repo_name, filename):
-            messagebox.showerror("Error", f"File '{filename}' not found in the 'develop' branch of repository '{repo_name}'.")
+        # Determine if branch is a tag or branch
+        branch_prefix = "refs/tags/" if branch in self.get_tags(project_key, repo_name) else "refs/heads/"
+        full_branch = f"{branch_prefix}{branch}"
+
+        # Check if file exists in the selected branch/tag
+        if not self.check_file_exists(project_key, repo_name, filename, full_branch):
+            messagebox.showerror("Error", f"File '{filename}' not found in '{branch}' of repository '{repo_name}'.")
             return
 
         # Clear previous output
         self.output_text.delete(1.0, tk.END)
 
         try:
-            # Fetch commit history for the file on the develop branch
-            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={filename}&until=refs%2Fheads%2Fdevelop&limit=100"
+            # Fetch commit history for the file on the selected branch/tag
+            encoded_branch = full_branch.replace("/", "%2F")
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={filename}&until={encoded_branch}&limit=100"
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
             commits = response.json().get("values", [])
 
             if not commits:
-                messagebox.showerror("Error", f"No commits found for file '{filename}' in the 'develop' branch.")
+                messagebox.showerror("Error", f"No commits found for file '{filename}' in '{branch}'.")
                 return
 
             filtered_commits = []
@@ -191,7 +230,7 @@ class BitbucketBlameGUI:
                 filtered_commits.append(commit)
 
             if not filtered_commits:
-                messagebox.showerror("Error", "No commits match the specified filters in the 'develop' branch.")
+                messagebox.showerror("Error", f"No commits match the specified filters in '{branch}'.")
                 return
 
             for commit in filtered_commits:
@@ -201,7 +240,7 @@ class BitbucketBlameGUI:
                 commit_message = commit.get("message", "No commit message")
 
                 # Fetch the diff for this commit
-                diff_url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits/{commit_id}/diff/{filename}?at=refs%2Fheads%2Fdevelop"
+                diff_url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits/{commit_id}/diff/{filename}?at={encoded_branch}"
                 diff_response = requests.get(diff_url, headers=self.headers)
                 diff_response.raise_for_status()
                 diff_data = diff_response.json()
@@ -228,6 +267,14 @@ class BitbucketBlameGUI:
 
         except requests.RequestException as e:
             messagebox.showerror("Error", f"Failed to retrieve blame information: {str(e)}")
+
+    def get_tags(self, project_key, repo_name):
+        try:
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/tags?limit=100", headers=self.headers)
+            response.raise_for_status()
+            return [tag["displayId"] for tag in response.json().get("values", [])]
+        except requests.RequestException:
+            return []
 
 if __name__ == "__main__":
     root = tk.Tk()
