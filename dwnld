@@ -49,8 +49,21 @@ class BitbucketBlameGUI:
         self.branch_dropdown = ttk.Combobox(self.root, textvariable=self.branch_var, state="readonly")
         self.branch_dropdown.pack(pady=5)
 
+        # File Search
+        tk.Label(self.root, text="Search File (optional):").pack(pady=5)
+        self.file_search_entry = tk.Entry(self.root)
+        self.file_search_entry.pack(pady=5)
+        self.search_button = tk.Button(self.root, text="Search Files", command=self.search_files)
+        self.search_button.pack(pady=5)
+
+        # File Search Results
+        tk.Label(self.root, text="Select File from Search Results:").pack(pady=5)
+        self.file_listbox = tk.Listbox(self.root, height=5, width=50)
+        self.file_listbox.pack(pady=5)
+        self.file_listbox.bind("<<ListboxSelect>>", self.select_file)
+
         # Filename Input
-        tk.Label(self.root, text="Enter Filename (e.g., src/main.py):").pack(pady=5)
+        tk.Label(self.root, text="Selected Filename (e.g., src/main.py):").pack(pady=5)
         self.filename_entry = tk.Entry(self.root)
         self.filename_entry.pack(pady=5)
 
@@ -92,6 +105,8 @@ class BitbucketBlameGUI:
         self.output_text.tag_configure("normal", foreground="black")
 
     def clear_inputs(self):
+        self.file_search_entry.delete(0, tk.END)
+        self.file_listbox.delete(0, tk.END)
         self.filename_entry.delete(0, tk.END)
         self.author_entry.delete(0, tk.END)
         self.start_date_entry.delete(0, tk.END)
@@ -156,6 +171,43 @@ class BitbucketBlameGUI:
             logging.error(f"Failed to fetch branches/tags: {str(e)}")
             messagebox.showerror("Error", f"Failed to fetch branches/tags: {str(e)}")
 
+    def search_files(self):
+        project_key = self.project_var.get()
+        repo_name = self.repo_var.get()
+        branch = self.branch_var.get()
+        query = self.file_search_entry.get().strip()
+
+        if not project_key or not repo_name or not branch:
+            messagebox.showerror("Error", "Please select a project, repository, and branch before searching.")
+            return
+
+        self.file_listbox.delete(0, tk.END)
+        try:
+            encoded_branch = urllib.parse.quote(branch, safe='')
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/files?at={encoded_branch}&limit=100"
+            response = requests.get(url, headers=self.headers)
+            logging.debug(f"File search URL: {url}, Status: {response.status_code}, Response: {response.text}")
+            response.raise_for_status()
+            files = response.json().get("values", [])
+
+            # Filter files by query
+            matching_files = [f["path"] for f in files if query.lower() in f["path"].lower()]
+            for file_path in matching_files:
+                self.file_listbox.insert(tk.END, file_path)
+
+            if not matching_files:
+                messagebox.showinfo("Info", "No files found matching the search query.")
+        except requests.RequestException as e:
+            logging.error(f"Failed to search files: {str(e)}")
+            messagebox.showerror("Error", f"Failed to search files: {str(e)}")
+
+    def select_file(self, event):
+        selection = self.file_listbox.curselection()
+        if selection:
+            file_path = self.file_listbox.get(selection[0])
+            self.filename_entry.delete(0, tk.END)
+            self.filename_entry.insert(0, file_path)
+
     def validate_date(self, date_str):
         if not date_str:
             return None
@@ -203,13 +255,8 @@ class BitbucketBlameGUI:
             messagebox.showerror("Error", "Start date must be before end date.")
             return
 
-        # Determine if branch is a tag or branch
-        branch_prefix = "refs/tags/" if branch in self.get_tags(project_key, repo_name) else "refs/heads/"
-        full_branch = f"{branch_prefix}{branch}"
-        encoded_branch = urllib.parse.quote(full_branch, safe='')
-
         # Check if file exists in the selected branch/tag
-        if not self.check_file_exists(project_key, repo_name, filename, full_branch):
+        if not self.check_file_exists(project_key, repo_name, filename, branch):
             messagebox.showerror("Error", f"File '{filename}' not found in '{branch}' of repository '{repo_name}'. Please check the file path.")
             return
 
@@ -218,8 +265,9 @@ class BitbucketBlameGUI:
 
         try:
             # Fetch commit history for the file on the selected branch/tag
+            encoded_branch = urllib.parse.quote(branch, safe='')
             encoded_filename = urllib.parse.quote(filename, safe='')
-            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={encoded_filename}&until={encoded_branch}&limit=100"
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={encoded_filename}&at={encoded_branch}&limit=100"
             response = requests.get(url, headers=self.headers)
             logging.debug(f"Commits URL: {url}, Status: {response.status_code}, Response: {response.text}")
             response.raise_for_status()
@@ -258,43 +306,4 @@ class BitbucketBlameGUI:
                 diff_url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits/{commit_id}/diff/{encoded_filename}?contextLines=0&at={encoded_branch}"
                 diff_response = requests.get(diff_url, headers=self.headers)
                 logging.debug(f"Diff URL: {diff_url}, Status: {diff_response.status_code}, Response: {diff_response.text}")
-                diff_response.raise_for_status()
-                diff_data = diff_response.json()
-                changed_lines = []
-
-                # Parse diff for the specific file
-                for diff_item in diff_data.get("diffs", []):
-                    if diff_item.get("source") == filename or diff_item.get("destination") == filename:
-                        for hunk in diff_item.get("hunks", []):
-                            for segment in hunk.get("segments", []):
-                                if segment["type"] == "ADDED":
-                                    changed_lines.extend(segment["lines"])
-
-                # Display commit info and changed lines
-                output = f"Commit: {commit_id}\nDate: {commit_date}\nAuthor: {commit_author}\nMessage: {commit_message}\n"
-                self.output_text.insert(tk.END, output, "normal")
-                
-                if changed_lines:
-                    for line in changed_lines:
-                        self.output_text.insert(tk.END, f"Code: {line}\n", "green")
-                else:
-                    self.output_text.insert(tk.END, "Code: No added lines in this commit\n", "green")
-                self.output_text.insert(tk.END, "\n", "normal")
-
-        except requests.RequestException as e:
-            logging.error(f"Failed to retrieve blame information: {str(e)}")
-            messagebox.showerror("Error", f"Failed to retrieve blame information: {str(e)}")
-
-    def get_tags(self, project_key, repo_name):
-        try:
-            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/tags?limit=100", headers=self.headers)
-            response.raise_for_status()
-            return [tag["displayId"] for tag in response.json().get("values", [])]
-        except requests.RequestException as e:
-            logging.error(f"Failed to fetch tags: {str(e)}")
-            return []
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = BitbucketBlameGUI(root)
-    root.mainloop()
+                diff_response
