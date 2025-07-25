@@ -56,6 +56,37 @@ def fetch_libraries(contrast_token, org_uuid, api_key):
                     data = response.json()
                     libraries_fetched = data.get('libraries', [])
                     logger.info(f"Fetched {len(libraries_fetched)} libraries at offset {offset}")
+
+
+
+
+Title: Proper Use of "Nature of Issue" Field During Jira Creation
+
+Team,
+
+While creating Jira tickets, please ensure the "Nature of Issue" field is selected appropriately. The available options should be used as follows:
+
+Option 1: New
+Select this if the vulnerability is found in newly written code. This is typically identified during patch or build reviews. Please double-check and validate thoroughly before selecting this option.
+
+Option 2: Working Feature Broken
+Choose this if the vulnerability exists in previously working, existing code.
+
+
+This practice will be implemented starting Monday.
+Metrics for New vs Existing issues will be tracked and shared with management by Rahul, so it is important that selections are made accurately.
+
+Let’s maintain consistency and accuracy in our reporting.
+
+
+
+
+
+
+
+
+
+
                     
                     for library in libraries_fetched:
                         libraries.append({
