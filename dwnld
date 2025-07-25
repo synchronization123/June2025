@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from atlassian import Bitbucket
+import requests
 from datetime import datetime
+import json
 
 class BitbucketBlameGUI:
     def __init__(self, root):
@@ -9,11 +10,13 @@ class BitbucketBlameGUI:
         self.root.title("Bitbucket Blame Viewer")
         self.root.geometry("800x600")
 
-        # Bitbucket connection using API token
-        self.bitbucket = Bitbucket(
-            url="https://crm.bitbucket.com",  # Your Bitbucket Data Center URL
-            token="your-api-token"           # Replace with your actual API token
-        )
+        # Bitbucket API settings
+        self.base_url = "https://crm.bitbucket.com/rest/api/1.0"
+        self.token = "your-api-token"  # Replace with your actual API token
+        self.headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json"
+        }
 
         # GUI Elements
         self.create_widgets()
@@ -54,9 +57,13 @@ class BitbucketBlameGUI:
         self.end_date_entry = tk.Entry(self.root)
         self.end_date_entry.pack(pady=5)
 
-        # Show Button
-        self.show_button = tk.Button(self.root, text="Show Blame", command=self.display_blame)
-        self.show_button.pack(pady=10)
+        # Buttons
+        button_frame = tk.Frame(self.root)
+        button_frame.pack(pady=10)
+        self.show_button = tk.Button(button_frame, text="Show Blame", command=self.display_blame)
+        self.show_button.pack(side="left", padx=5)
+        self.clear_button = tk.Button(buttonა჊self.root, text="Clear", command=self.clear_inputs)
+        self.clear_button.pack(side="left", padx=5)
 
         # Text Area with Scrollbar
         self.text_frame = tk.Frame(self.root)
@@ -73,26 +80,37 @@ class BitbucketBlameGUI:
         self.output_text.tag_configure("green", foreground="green")
         self.output_text.tag_configure("normal", foreground="black")
 
+    def clear_inputs(self):
+        self.filename_entry.delete(0, tk.END)
+        self.author_entry.delete(0, tk.END)
+        self.start_date_entry.delete(0, tk.END)
+        self.end_date_entry.delete(0, tk.END)
+        self.output_text.delete(1.0, tk.END)
+
     def populate_projects(self):
         try:
-            projects = self.bitbucket.project_list()
+            response = requests.get(f"{self.base_url}/projects?limit=100", headers=self.headers)
+            response.raise_for_status()
+            projects = response.json().get("values", [])
             project_keys = [project["key"] for project in projects]
             self.project_dropdown["values"] = project_keys
             if project_keys:
                 self.project_var.set(project_keys[0])
                 self.populate_repos(None)
-        except Exception as e:
+        except requests.RequestException as e:
             messagebox.showerror("Error", f"Failed to fetch projects: {str(e)}")
 
     def populate_repos(self, event):
         project_key = self.project_var.get()
         try:
-            repos = self.bitbucket.repo_list(project_key)
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos?limit=100", headers=self.headers)
+            response.raise_for_status()
+            repos = response.json().get("values", [])
             repo_names = [repo["name"] for repo in repos]
             self.repo_dropdown["values"] = repo_names
             if repo_names:
                 self.repo_var.set(repo_names[0])
-        except Exception as e:
+        except requests.RequestException as e:
             messagebox.showerror("Error", f"Failed to fetch repositories: {str(e)}")
 
     def validate_date(self, date_str):
@@ -131,7 +149,10 @@ class BitbucketBlameGUI:
 
         try:
             # Fetch commit history for the file
-            commits = self.bitbucket.get_commits(project_key, repo_name, path=filename, limit=100)
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={filename}&limit=100"
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            commits = response.json().get("values", [])
 
             if not commits:
                 messagebox.showerror("Error", f"No commits found for file: {filename}")
@@ -162,17 +183,21 @@ class BitbucketBlameGUI:
                 commit_author = commit["author"]["name"]
                 commit_message = commit.get("message", "No commit message")
 
-                # Fetch the diff for this commit
-                diff = self.bitbucket.get_commit(project_key, repo_name, commit_id)["diffs"]
+                # Fetch the diff for this ump
+                diff_url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits/{commit_id}/diff/{filename}"
+                diff_response = requests.get(diff_url, headers=self.headers)
+                diff_response.raise_for_status()
+                diff_data = diff_response.json()
                 changed_lines = []
 
                 # Parse diff for the specific file
-                for diff_item in diff:
+                for diff_item in diff_data.get("diffs", []):
                     if diff_item.get("source") == filename or diff_item.get("destination") == filename:
-                        for hunk in diff_item.get("hunks", []):
-                            for line in hunk.get("lines", []):
+                        for hunks in diff_item.get("hunks", []):
+                            for line in hunks.get("segments", []):
+
                                 if line["type"] == "ADDED":
-                                    changed_lines.append(line["line"])
+                                    changed_lines.extend(line["lines"])
 
                 # Display commit info and changed lines
                 output = f"Commit: {commit_id}\nDate: {commit_date}\nAuthor: {commit_author}\nMessage: {commit_message}\n"
@@ -185,7 +210,7 @@ class BitbucketBlameGUI:
                     self.output_text.insert(tk.END, "Code: No added lines in this commit\n", "green")
                 self.output_text.insert(tk.END, "\n", "normal")
 
-        except Exception as e:
+        except requests.RequestException as e:
             messagebox.showerror("Error", f"Failed to retrieve blame information: {str(e)}")
 
 if __name__ == "__main__":
