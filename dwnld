@@ -1,184 +1,194 @@
-import requests
-import pandas as pd
-import os
-import time
+import tkinter as tk
+from tkinter import ttk, messagebox
+from atlassian import Bitbucket
 from datetime import datetime
-from openpyxl import Workbook
-from openpyxl.styles import Border, Side, Alignment, Font
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import logging
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('library_download.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+class BitbucketBlameGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Bitbucket Blame Viewer")
+        self.root.geometry("800x600")
 
-# Set working directory
-script_dir = os.path.dirname(os.path.abspath(__file__))
-os.chdir(script_dir)
+        # Bitbucket connection using API token
+        self.bitbucket = Bitbucket(
+            url="https://crm.bitbucket.com",  # Your Bitbucket Data Center URL
+            token="your-api-token"           # Replace with your actual API token
+        )
 
-def fetch_libraries(contrast_token, org_uuid, api_key):
-    headers = {
-        'Authorization': contrast_token,
-        'Api-key': api_key,
-        'Accept': 'application/json'
-    }
+        # GUI Elements
+        self.create_widgets()
 
-    base_url = 'https://contrast.abc.com/Contrast/api/ng/'
-    libraries = []
-    limit = 500  # Number of libraries per request
-    offset = 0
-    delay = 0.5  # Delay between requests in seconds
+        # Fetch projects and populate dropdown
+        self.populate_projects()
 
-    with requests.Session() as session:
-        session.headers.update(headers)
-        while True:
-            url = f"{base_url}{org_uuid}/libraries?limit={limit}&offset={offset}"
-            logger.info(f"Fetching libraries with offset {offset} and limit {limit}")
-            
-            @retry(
-                stop=stop_after_attempt(3),
-                wait=wait_exponential(multiplier=1, min=4, max=10),
-                retry=retry_if_exception_type((requests.exceptions.RequestException,))
-            )
-            def make_request():
-                return session.get(url, timeout=30)
+    def create_widgets(self):
+        # Project Dropdown
+        tk.Label(self.root, text="Select Project:").pack(pady=5)
+        self.project_var = tk.StringVar()
+        self.project_dropdown = ttk.Combobox(self.root, textvariable=self.project_var, state="readonly")
+        self.project_dropdown.pack(pady=5)
+        self.project_dropdown.bind("<<ComboboxSelected>>", self.populate_repos)
 
-            try:
-                response = make_request()
-                if response.status_code == 200:
-                    data = response.json()
-                    libraries_fetched = data.get('libraries', [])
-                    logger.info(f"Fetched {len(libraries_fetched)} libraries at offset {offset}")
+        # Repository Dropdown
+        tk.Label(self.root, text="Select Repository:").pack(pady=5)
+        self.repo_var = tk.StringVar()
+        self.repo_dropdown = ttk.Combobox(self.root, textvariable=self.repo_var, state="readonly")
+        self.repo_dropdown.pack(pady=5)
 
+        # Filename Input
+        tk.Label(self.root, text="Enter Filename (e.g., README.md):").pack(pady=5)
+        self.filename_entry = tk.Entry(self.root)
+        self.filename_entry.pack(pady=5)
 
+        # Author Filter
+        tk.Label(self.root, text="Filter by Author (optional):").pack(pady=5)
+        self.author_entry = tk.Entry(self.root)
+        self.author_entry.pack(pady=5)
 
+        # Date Range Filter
+        tk.Label(self.root, text="Start Date (YYYY-MM-DD, optional):").pack(pady=5)
+        self.start_date_entry = tk.Entry(self.root)
+        self.start_date_entry.pack(pady=5)
 
-Title: Proper Use of "Nature of Issue" Field During Jira Creation
+        tk.Label(self.root, text="End Date (YYYY-MM-DD, optional):").pack(pady=5)
+        self.end_date_entry = tk.Entry(self.root)
+        self.end_date_entry.pack(pady=5)
 
-Team,
+        # Show Button
+        self.show_button = tk.Button(self.root, text="Show Blame", command=self.display_blame)
+        self.show_button.pack(pady=10)
 
-While creating Jira tickets, please ensure the "Nature of Issue" field is selected appropriately. The available options should be used as follows:
+        # Text Area with Scrollbar
+        self.text_frame = tk.Frame(self.root)
+        self.text_frame.pack(pady=10, fill="both", expand=True)
 
-Option 1: New
-Select this if the vulnerability is found in newly written code. This is typically identified during patch or build reviews. Please double-check and validate thoroughly before selecting this option.
+        self.output_text = tk.Text(self.text_frame, height=20, width=80, wrap="none")
+        self.output_text.pack(side="left", fill="both", expand=True)
 
-Option 2: Working Feature Broken
-Choose this if the vulnerability exists in previously working, existing code.
+        scrollbar = tk.Scrollbar(self.text_frame, orient="vertical", command=self.output_text.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.output_text.config(yscrollcommand=scrollbar.set)
 
+        # Configure tags for text coloring
+        self.output_text.tag_configure("green", foreground="green")
+        self.output_text.tag_configure("normal", foreground="black")
 
-This practice will be implemented starting Monday.
-Metrics for New vs Existing issues will be tracked and shared with management by Rahul, so it is important that selections are made accurately.
+    def populate_projects(self):
+        try:
+            projects = self.bitbucket.project_list()
+            project_keys = [project["key"] for project in projects]
+            self.project_dropdown["values"] = project_keys
+            if project_keys:
+                self.project_var.set(project_keys[0])
+                self.populate_repos(None)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to fetch projects: {str(e)}")
 
-Let’s maintain consistency and accuracy in our reporting.
+    def populate_repos(self, event):
+        project_key = self.project_var.get()
+        try:
+            repos = self.bitbucket.repo_list(project_key)
+            repo_names = [repo["name"] for repo in repos]
+            self.repo_dropdown["values"] = repo_names
+            if repo_names:
+                self.repo_var.set(repo_names[0])
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to fetch repositories: {str(e)}")
 
+    def validate_date(self, date_str):
+        if not date_str:
+            return None
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid date format. Use YYYY-MM-DD.")
+            return False
 
+    def display_blame(self):
+        project_key = self.project_var.get()
+        repo_name = self.repo_var.get()
+        filename = self.filename_entry.get().strip()
+        author = self.author_entry.get().strip()
+        start_date = self.start_date_entry.get().strip()
+        end_date = self.end_date_entry.get().strip()
 
+        # Validate inputs
+        if not project_key or not repo_name or not filename:
+            messagebox.showerror("Error", "Please select a project, repository, and enter a filename.")
+            return
 
+        # Validate date inputs
+        start_dt = self.validate_date(start_date)
+        end_dt = self.validate_date(end_date)
+        if start_dt is False or end_dt is False:
+            return
+        if start_dt and end_dt and start_dt > end_dt:
+            messagebox.showerror("Error", "Start date must be before end date.")
+            return
 
+        # Clear previous output
+        self.output_text.delete(1.0, tk.END)
 
+        try:
+            # Fetch commit history for the file
+            commits = self.bitbucket.get_commits(project_key, repo_name, path=filename, limit=100)
 
+            if not commits:
+                messagebox.showerror("Error", f"No commits found for file: {filename}")
+                return
 
+            filtered_commits = []
+            for commit in commits:
+                commit_date = datetime.fromtimestamp(commit["authorTimestamp"] / 1000)
+                commit_author = commit["author"]["name"]
 
+                # Apply filters
+                if author and author.lower() not in commit_author.lower():
+                    continue
+                if start_dt and commit_date < start_dt:
+                    continue
+                if end_dt and commit_date > end_dt:
+                    continue
 
-                    
-                    for library in libraries_fetched:
-                        libraries.append({
-                            'Library Name': library.get('name', ''),
-                            'Version': library.get('version', ''),
-                            'Score': library.get('score', 'N/A'),  # Public libraries have A-F score, private have N/A
-                            'Vulnerabilities': library.get('total_vulnerabilities', 0),
-                            'Language': library.get('language', ''),
-                            'Hash': library.get('hash', ''),
-                            'Type': 'Public' if library.get('score') else 'Private',  # Based on Contrast documentation
-                            'Last Seen': library.get('last_seen', '')
-                        })
+                filtered_commits.append(commit)
 
-                    if len(libraries_fetched) < limit:
-                        logger.info("No more libraries to fetch")
-                        break
-                    offset += limit
-                    time.sleep(delay)
+            if not filtered_commits:
+                messagebox.showerror("Error", "No commits match the specified filters.")
+                return
+
+            for commit in filtered_commits:
+                commit_id = commit["id"]
+                commit_date = datetime.fromtimestamp(commit["authorTimestamp"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                commit_author = commit["author"]["name"]
+                commit_message = commit.get("message", "No commit message")
+
+                # Fetch the diff for this commit
+                diff = self.bitbucket.get_commit(project_key, repo_name, commit_id)["diffs"]
+                changed_lines = []
+
+                # Parse diff for the specific file
+                for diff_item in diff:
+                    if diff_item.get("source") == filename or diff_item.get("destination") == filename:
+                        for hunk in diff_item.get("hunks", []):
+                            for line in hunk.get("lines", []):
+                                if line["type"] == "ADDED":
+                                    changed_lines.append(line["line"])
+
+                # Display commit info and changed lines
+                output = f"Commit: {commit_id}\nDate: {commit_date}\nAuthor: {commit_author}\nMessage: {commit_message}\n"
+                self.output_text.insert(tk.END, output, "normal")
+                
+                if changed_lines:
+                    for line in changed_lines:
+                        self.output_text.insert(tk.END, f"Code: {line}\n", "green")
                 else:
-                    logger.error(f"Error fetching libraries: {response.status_code} - {response.text}")
-                    break
-            except Exception as e:
-                logger.error(f"Exception fetching libraries at offset {offset}: {e}")
-                break
+                    self.output_text.insert(tk.END, "Code: No added lines in this commit\n", "green")
+                self.output_text.insert(tk.END, "\n", "normal")
 
-    return libraries
-
-def save_to_excel(libraries):
-    if not libraries:
-        logger.warning("No libraries to save")
-        return
-
-    # Create DataFrame
-    df = pd.DataFrame(libraries)
-    
-    # Define output file
-    excel_file = os.path.join(script_dir, 'Libraries.xlsx')
-    
-    # Save to Excel
-    df.to_excel(excel_file, index=False)
-    logger.info(f"Libraries saved to {excel_file} (Total: {len(libraries)})")
-
-    # Format Excel file
-    wb = Workbook()
-    wb = load_workbook(excel_file)
-    ws = wb.active
-
-    # Define styles
-    medium_border = Border(
-        left=Side(style='medium'), right=Side(style='medium'),
-        top=Side(style='medium'), bottom=Side(style='medium')
-    )
-    thin_border = Border(
-        left=Side(style='thin'), right=Side(style='thin'),
-        top=Side(style='thin'), bottom=Side(style='thin')
-    )
-    center_align = Alignment(horizontal='center', vertical='center')
-    left_align = Alignment(horizontal='left', vertical='center')
-    bold_font = Font(bold=True)
-
-    # Format header
-    for col_idx in range(1, ws.max_column + 1):
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = bold_font
-        cell.alignment = center_align if col_idx > 1 else left_align
-        cell.border = thin_border
-
-    # Format data rows
-    for row_idx in range(2, ws.max_row + 1):
-        for col_idx in range(1, ws.max_column + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            cell.alignment = center_align if col_idx > 1 else left_align
-            cell.border = thin_border
-
-    wb.save(excel_file)
-    logger.info("Excel formatting applied")
-
-def main():
-    # API credentials
-    contrast_token = '<<TOKEN>>'
-    org_uuid = '<<UUID>>'
-    api_key = '<<APIKEY>>'
-
-    logger.info("Starting library download script...")
-
-    # Fetch libraries
-    libraries = fetch_libraries(contrast_token, org_uuid, api_key)
-
-    # Save to Excel
-    save_to_excel(libraries)
-
-    logger.info("Script execution completed")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to retrieve blame information: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    app = BitbucketBlameGUI(root)
+    root.mainloop()
