@@ -104,7 +104,7 @@ class BitbucketParticipantsGUI:
             response.raise_for_status()
             projects = response.json().get("values", [])
             logging.debug(f"Projects fetched: {len(projects)} projects")
-            project_keys = sorted([project["key"] for project in projects])  # Sort for user-friendliness
+            project_keys = sorted([project["key"] for project in projects])
             self.root.after(0, lambda: self.project_combo.configure(values=project_keys))
             if project_keys:
                 self.root.after(0, lambda: self.project_var.set(project_keys[0]))
@@ -127,7 +127,7 @@ class BitbucketParticipantsGUI:
             response.raise_for_status()
             repos = response.json().get("values", [])
             logging.debug(f"Repositories fetched for {project_key}: {len(repos)} repos")
-            repo_names = sorted([repo["name"] for repo in repos])  # Sort for user-friendliness
+            repo_names = sorted([repo["name"] for repo in repos])
             self.root.after(0, lambda: self.repo_combo.configure(values=repo_names))
             if repo_names:
                 self.root.after(0, lambda: self.repo_var.set(repo_names[0]))
@@ -200,9 +200,8 @@ class BitbucketParticipantsGUI:
 
         # Populate table
         for participant in participants:
-            user = participant.get("user", {})
-            display_name = user.get("displayName", "N/A")
-            email = user.get("emailAddress", "N/A")
+            display_name = participant.get("displayName", "N/A")
+            email = participant.get("emailAddress", "N/A")
             tree.insert("", "end", values=(display_name, email))
 
         # Copy to Clipboard button
