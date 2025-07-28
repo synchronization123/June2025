@@ -1,353 +1,249 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, Toplevel
 import requests
-from datetime import datetime
+import threading
 import urllib.parse
 import logging
+import json
+import pyperclip
+from datetime import datetime
 
-class BitbucketBlameGUI:
+class SearchableCombobox(ttk.Combobox):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.values = []
+        self.original_values = []
+        self.bind('<KeyRelease>', self.on_keyrelease)
+        self.bind('<FocusIn>', self.on_focus_in)
+        self['state'] = 'normal'
+
+    def set_values(self, values):
+        self.original_values = values
+        self.values = values
+        self['values'] = values
+
+    def on_keyrelease(self, event):
+        query = self.get().lower()
+        if query:
+            self.values = [v for v in self.original_values if query in v.lower()]
+        else:
+            self.values = self.original_values
+        self['values'] = self.values
+        self.event_generate('<Down>')
+
+    def on_focus_in(self, event):
+        self.event_generate('<Down>')
+
+class BitbucketParticipantsGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Bitbucket Blame Viewer")
-        self.root.geometry("800x600")
+        self.root.title("Bitbucket Participants Viewer")
+        self.root.geometry("600x400")
+        self.root.configure(bg="#2E2E2E")
 
-        # Set up logging for debugging
-        logging.basicConfig(filename="bitbucket_blame.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+        # Set up logging
+        logging.basicConfig(filename="bitbucket_participants.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
         # Bitbucket API settings
-        self.base_url = "https://crm.bitbucket.com/rest/api/1.0"
+        self.base_url = "https://crm.bitbucket.com/rest/api/latest"
         self.token = "your-api-token"  # Replace with your actual API token
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Accept": "application/json"
         }
 
+        # Loading indicator
+        self.loading = False
+        self.loading_label = None
+
         # GUI Elements
         self.create_widgets()
 
-        # Fetch projects and populate dropdown
-        self.populate_projects()
+        # Fetch projects
+        self.fetch_projects()
 
     def create_widgets(self):
-        # Project Dropdown
-        tk.Label(self.root, text="Select Project:").pack(pady=5)
+        # Main frame
+        main_frame = tk.Frame(self.root, bg="#2E2E2E", padx=20, pady=20)
+        main_frame.pack(fill="both", expand=True)
+
+        # Title
+        title_label = tk.Label(main_frame, text="Bitbucket Participants", font=("Helvetica", 16, "bold"), fg="#FFFFFF", bg="#2E2E2E")
+        title_label.pack(pady=10)
+
+        # Project Searchable Combobox
+        tk.Label(main_frame, text="Search Project:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
         self.project_var = tk.StringVar()
-        self.project_dropdown = ttk.Combobox(self.root, textvariable=self.project_var, state="readonly")
-        self.project_dropdown.pack(pady=5)
-        self.project_dropdown.bind("<<ComboboxSelected>>", self.populate_repos)
+        self.project_combo = SearchableCombobox(main_frame, textvariable=self.project_var, width=50, font=("Helvetica", 10))
+        self.project_combo.pack(pady=5)
+        self.project_combo.bind('<<ComboboxSelected>>', self.on_project_select)
 
-        # Repository Dropdown
-        tk.Label(self.root, text="Select Repository:").pack(pady=5)
+        # Repository Searchable Combobox
+        tk.Label(main_frame, text="Search Repository:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
         self.repo_var = tk.StringVar()
-        self.repo_dropdown = ttk.Combobox(self.root, textvariable=self.repo_var, state="readonly")
-        self.repo_dropdown.pack(pady=5)
-        self.repo_dropdown.bind("<<ComboboxSelected>>", self.populate_branches)
-
-        # Branch Dropdown
-        tk.Label(self.root, text="Select Branch/Tag:").pack(pady=5)
-        self.branch_var = tk.StringVar()
-        self.branch_dropdown = ttk.Combobox(self.root, textvariable=self.branch_var, state="readonly")
-        self.branch_dropdown.pack(pady=5)
-
-        # File Search
-        tk.Label(self.root, text="Search File (optional):").pack(pady=5)
-        self.file_search_entry = tk.Entry(self.root)
-        self.file_search_entry.pack(pady=5)
-        self.search_button = tk.Button(self.root, text="Search Files", command=self.search_files)
-        self.search_button.pack(pady=5)
-
-        # File Search Results
-        tk.Label(self.root, text="Select File from Search Results:").pack(pady=5)
-        self.file_listbox = tk.Listbox(self.root, height=5, width=50)
-        self.file_listbox.pack(pady=5)
-        self.file_listbox.bind("<<ListboxSelect>>", self.select_file)
-
-        # Filename Input
-        tk.Label(self.root, text="Selected Filename (e.g., src/main.py):").pack(pady=5)
-        self.filename_entry = tk.Entry(self.root)
-        self.filename_entry.pack(pady=5)
-
-        # Author Filter
-        tk.Label(self.root, text="Filter by Author (optional):").pack(pady=5)
-        self.author_entry = tk.Entry(self.root)
-        self.author_entry.pack(pady=5)
-
-        # Date Range Filter
-        tk.Label(self.root, text="Start Date (YYYY-MM-DD, optional):").pack(pady=5)
-        self.start_date_entry = tk.Entry(self.root)
-        self.start_date_entry.pack(pady=5)
-
-        tk.Label(self.root, text="End Date (YYYY-MM-DD, optional):").pack(pady=5)
-        self.end_date_entry = tk.Entry(self.root)
-        self.end_date_entry.pack(pady=5)
+        self.repo_combo = SearchableCombobox(main_frame, textvariable=self.repo_var, width=50, font=("Helvetica", 10))
+        self.repo_combo.pack(pady=5)
 
         # Buttons
-        button_frame = tk.Frame(self.root)
-        button_frame.pack(pady=10)
-        self.show_button = tk.Button(button_frame, text="Show Blame", command=self.display_blame)
-        self.show_button.pack(side="left", padx=5)
-        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_inputs)
-        self.clear_button.pack(side="left", padx=5)
+        button_frame = tk.Frame(main_frame, bg="#2E2E2E")
+        button_frame.pack(pady=20)
 
-        # Text Area with Scrollbar
-        self.text_frame = tk.Frame(self.root)
-        self.text_frame.pack(pady=10, fill="both", expand=True)
+        self.show_button = tk.Button(button_frame, text="Show Participants", command=self.show_participants,
+                                     font=("Helvetica", 10), bg="#4CAF50", fg="#FFFFFF", relief="flat",
+                                     activebackground="#45A049", padx=10, pady=5)
+        self.show_button.pack(side="left", padx=10)
+        self.show_button.bind("<Enter>", lambda e: self.show_button.config(bg="#66BB6A"))
+        self.show_button.bind("<Leave>", lambda e: self.show_button.config(bg="#4CAF50"))
 
-        self.output_text = tk.Text(self.text_frame, height=20, width=80, wrap="none")
-        self.output_text.pack(side="left", fill="both", expand=True)
+        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_inputs,
+                                      font=("Helvetica", 10), bg="#F44336", fg="#FFFFFF", relief="flat",
+                                      activebackground="#D32F2F", padx=10, pady=5)
+        self.clear_button.pack(side="left", padx=10)
+        self.clear_button.bind("<Enter>", lambda e: self.clear_button.config(bg="#EF5350"))
+        self.clear_button.bind("<Leave>", lambda e: self.clear_button.config(bg="#F44336"))
 
-        scrollbar = tk.Scrollbar(self.text_frame, orient="vertical", command=self.output_text.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.output_text.config(yscrollcommand=scrollbar.set)
+        # Loading label (hidden initially)
+        self.loading_label = tk.Label(main_frame, text="Loading...", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E")
+        self.animate_loading()
 
-        # Configure tags for text coloring
-        self.output_text.tag_configure("green", foreground="green")
-        self.output_text.tag_configure("normal", foreground="black")
+    def animate_loading(self):
+        if self.loading:
+            current_text = self.loading_label.cget("text")
+            new_text = current_text + "." if len(current_text) < 10 else "Loading..."
+            self.loading_label.config(text=new_text)
+            self.root.after(500, self.animate_loading)
+        else:
+            self.loading_label.pack_forget()
 
     def clear_inputs(self):
-        self.file_search_entry.delete(0, tk.END)
-        self.file_listbox.delete(0, tk.END)
-        self.filename_entry.delete(0, tk.END)
-        self.author_entry.delete(0, tk.END)
-        self.start_date_entry.delete(0, tk.END)
-        self.end_date_entry.delete(0, tk.END)
-        self.output_text.delete(1.0, tk.END)
+        self.project_var.set("")
+        self.repo_var.set("")
+        self.repo_combo.set_values([])
+        self.project_combo.focus_set()
 
-    def populate_projects(self):
+    def fetch_projects(self):
+        self.loading = True
+        self.loading_label.pack(pady=10)
+        threading.Thread(target=self._fetch_projects_thread, daemon=True).start()
+
+    def _fetch_projects_thread(self):
         try:
-            response = requests.get(f"{self.base_url}/projects?limit=100", headers=self.headers)
+            response = requests.get(f"{self.base_url}/projects?limit=1000", headers=self.headers)
             response.raise_for_status()
             projects = response.json().get("values", [])
-            logging.debug(f"Projects fetched: {projects}")
+            logging.debug(f"Projects fetched: {len(projects)}")
             project_keys = [project["key"] for project in projects]
-            self.project_dropdown["values"] = project_keys
-            if project_keys:
-                self.project_var.set(project_keys[0])
-                self.populate_repos(None)
+            self.root.after(0, lambda: self.project_combo.set_values(project_keys))
         except requests.RequestException as e:
             logging.error(f"Failed to fetch projects: {str(e)}")
-            messagebox.showerror("Error", f"Failed to fetch projects: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch projects: {str(e)}"))
+        finally:
+            self.root.after(0, lambda: setattr(self, "loading", False))
 
-    def populate_repos(self, event):
+    def on_project_select(self, event):
         project_key = self.project_var.get()
+        if project_key:
+            self.loading = True
+            self.loading_label.pack(pady=10)
+            threading.Thread(target=self._fetch_repos_thread, args=(project_key,), daemon=True).start()
+
+    def _fetch_repos_thread(self, project_key):
         try:
-            response = requests.get(f"{self.base_url}/projects/{project_key}/repos?limit=100", headers=self.headers)
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos?limit=1000", headers=self.headers)
             response.raise_for_status()
             repos = response.json().get("values", [])
-            logging.debug(f"Repositories fetched for {project_key}: {repos}")
+            logging.debug(f"Repositories fetched for {project_key}: {len(repos)}")
             repo_names = [repo["name"] for repo in repos]
-            self.repo_dropdown["values"] = repo_names
-            if repo_names:
-                self.repo_var.set(repo_names[0])
-                self.populate_branches(None)
+            self.root.after(0, lambda: self.repo_combo.set_values(repo_names))
         except requests.RequestException as e:
             logging.error(f"Failed to fetch repositories: {str(e)}")
-            messagebox.showerror("Error", f"Failed to fetch repositories: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch repositories: {str(e)}"))
+        finally:
+            self.root.after(0, lambda: setattr(self, "loading", False))
 
-    def populate_branches(self, event):
+    def show_participants(self):
         project_key = self.project_var.get()
         repo_name = self.repo_var.get()
+
         if not project_key or not repo_name:
-            return
-        try:
-            # Fetch branches
-            branches = []
-            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/branches?limit=100", headers=self.headers)
-            response.raise_for_status()
-            branches.extend([branch["displayId"] for branch in response.json().get("values", [])])
-            logging.debug(f"Branches fetched for {repo_name}: {branches}")
-
-            # Fetch tags
-            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/tags?limit=100", headers=self.headers)
-            response.raise_for_status()
-            tags = [tag["displayId"] for tag in response.json().get("values", [])]
-            branches.extend(tags)
-            logging.debug(f"Tags fetched for {repo_name}: {tags}")
-
-            self.branch_dropdown["values"] = branches
-            if branches:
-                self.branch_var.set("develop" if "develop" in branches else branches[0])
-        except requests.RequestException as e:
-            logging.error(f"Failed to fetch branches/tags: {str(e)}")
-            messagebox.showerror("Error", f"Failed to fetch branches/tags: {str(e)}")
-
-    def search_files(self):
-        project_key = self.project_var.get()
-        repo_name = self.repo_var.get()
-        branch = self.branch_var.get()
-        query = self.file_search_entry.get().strip()
-
-        if not project_key or not repo_name or not branch:
-            messagebox.showerror("Error", "Please select a project, repository, and branch before searching.")
+            messagebox.showerror("Error", "Please select a project and repository.")
             return
 
-        self.file_listbox.delete(0, tk.END)
+        self.loading = True
+        self.loading_label.pack(pady=10)
+        threading.Thread(target=self._fetch_participants_thread, args=(project_key, repo_name), daemon=True).start()
+
+    def _fetch_participants_thread(self, project_key, repo_name):
         try:
-            encoded_branch = urllib.parse.quote(branch, safe='')
-            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/files?at={encoded_branch}&limit=100"
+            encoded_repo = urllib.parse.quote(repo_name, safe='')
+            url = f"{self.base_url}/projects/{project_key}/repos/{encoded_repo}/participants"
             response = requests.get(url, headers=self.headers)
-            logging.debug(f"File search URL: {url}, Status: {response.status_code}, Response: {response.text}")
+            logging.debug(f"Participants URL: {url}, Status: {response.status_code}, Response: {response.text}")
             response.raise_for_status()
-            files = response.json().get("values", [])
-
-            # Filter files by query
-            matching_files = [f["path"] for f in files if query.lower() in f["path"].lower()]
-            for file_path in matching_files:
-                self.file_listbox.insert(tk.END, file_path)
-
-            if not matching_files:
-                messagebox.showinfo("Info", "No files found matching the search query.")
+            participants = response.json().get("values", [])
+            self.root.after(0, lambda: self.display_participants(participants))
         except requests.RequestException as e:
-            logging.error(f"Failed to search files: {str(e)}")
-            messagebox.showerror("Error", f"Failed to search files: {str(e)}")
+            logging.error(f"Failed to fetch participants: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch participants: {str(e)}"))
+        finally:
+            self.root.after(0, lambda: setattr(self, "loading", False))
 
-    def select_file(self, event):
-        selection = self.file_listbox.curselection()
-        if selection:
-            file_path = self.file_listbox.get(selection[0])
-            self.filename_entry.delete(0, tk.END)
-            self.filename_entry.insert(0, file_path)
+    def display_participants(self, participants):
+        # Create popup window
+        popup = Toplevel(self.root)
+        popup.title("Repository Participants")
+        popup.geometry("600x400")
+        popup.configure(bg="#2E2E2E")
+        popup.transient(self.root)
+        popup.grab_set()
 
-    def validate_date(self, date_str):
-        if not date_str:
-            return None
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            messagebox.showerror("Error", "Invalid date format. Use YYYY-MM-DD.")
-            return False
+        # Table frame
+        table_frame = tk.Frame(popup, bg="#2E2E2E", padx=10, pady=10)
+        table_frame.pack(fill="both", expand=True)
 
-    def check_file_exists(self, project_key, repo_name, filename, branch):
-        try:
-            encoded_branch = urllib.parse.quote(branch, safe='')
-            encoded_filename = urllib.parse.quote(filename, safe='')
-            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/browse/{encoded_filename}?at={encoded_branch}"
-            response = requests.get(url, headers=self.headers)
-            logging.debug(f"File check URL: {url}, Status: {response.status_code}")
-            if response.status_code == 404:
-                return False
-            response.raise_for_status()
-            return True
-        except requests.RequestException as e:
-            logging.error(f"Failed to check file existence: {str(e)}")
-            return False
+        # Table
+        columns = ("Name", "Email")
+        tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+        tree.heading("Name", text="Display Name")
+        tree.heading("Email", text="Email Address")
+        tree.column("Name", width=300)
+        tree.column("Email", width=300)
+        tree.pack(side="left", fill="both", expand=True)
 
-    def display_blame(self):
-        project_key = self.project_var.get()
-        repo_name = self.repo_var.get()
-        filename = self.filename_entry.get().strip()
-        branch = self.branch_var.get()
-        author = self.author_entry.get().strip()
-        start_date = self.start_date_entry.get().strip()
-        end_date = self.end_date_entry.get().strip()
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scrollbar.set)
 
-        # Validate inputs
-        if not project_key or not repo_name or not filename or not branch:
-            messagebox.showerror("Error", "Please select a project, repository, branch, and enter a filename.")
-            return
+        # Style
+        style = ttk.Style()
+        style.configure("Treeview", background="#3C3C3C", foreground="#FFFFFF", fieldbackground="#3C3C3C")
+        style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"), background="#4CAF50", foreground="#FFFFFF")
 
-        # Validate date inputs
-        start_dt = self.validate_date(start_date)
-        end_dt = self.validate_date(end_date)
-        if start_dt is False or end_dt is False:
-            return
-        if start_dt and end_dt and start_dt > end_dt:
-            messagebox.showerror("Error", "Start date must be before end date.")
-            return
+        # Populate table
+        for participant in participants:
+            user = participant.get("user", {})
+            display_name = user.get("displayName", "N/A")
+            email = user.get("emailAddress", "N/A")
+            tree.insert("", "end", values=(display_name, email))
 
-        # Check if file exists in the selected branch/tag
-        if not self.check_file_exists(project_key, repo_name, filename, branch):
-            messagebox.showerror("Error", f"File '{filename}' not found in '{branch}' of repository '{repo_name}'. Please check the file path.")
-            return
+        # Copy to Clipboard button
+        copy_button = tk.Button(popup, text="Copy to Clipboard", command=lambda: self.copy_to_clipboard(tree),
+                                font=("Helvetica", 10), bg="#2196F3", fg="#FFFFFF", relief="flat",
+                                activebackground="#1976D2", padx=10, pady=5)
+        copy_button.pack(pady=10)
+        copy_button.bind("<Enter>", lambda e: copy_button.config(bg="#42A5F5"))
+        copy_button.bind("<Leave>", lambda e: copy_button.config(bg="#2196F3"))
 
-        # Clear previous output
-        self.output_text.delete(1.0, tk.END)
-
-        try:
-            # Fetch commit history for the file on the selected branch/tag
-            encoded_branch = urllib.parse.quote(branch, safe='')
-            encoded_filename = urllib.parse.quote(filename, safe='')
-            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={encoded_filename}&at={encoded_branch}&limit=100"
-            response = requests.get(url, headers=self.headers)
-            logging.debug(f"Commits URL: {url}, Status: {response.status_code}, Response: {response.text}")
-            response.raise_for_status()
-            commits = response.json().get("values", [])
-
-            if not commits:
-                messagebox.showerror("Error", f"No commits found for file '{filename}' in '{branch}'. Verify the file has commits in this branch/tag.")
-                return
-
-            filtered_commits = []
-            for commit in commits:
-                commit_date = datetime.fromtimestamp(commit["authorTimestamp"] / 1000)
-                commit_author = commit["author"]["name"]
-
-                # Apply filters
-                if author and author.lower() not in commit_author.lower():
-                    continue
-                if start_dt and commit_date < start_dt:
-                    continue
-                if end_dt and commit_date > end_dt:
-                    continue
-
-                filtered_commits.append(commit)
-
-            if not filtered_commits:
-                messagebox.showerror("Error", f"No commits match the specified filters in '{branch}'.")
-                return
-
-            for commit in filtered_commits:
-                commit_id = commit["id"]
-                commit_date = datetime.fromtimestamp(commit["authorTimestamp"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-                commit_author = commit["author"]["name"]
-                commit_message = commit.get("message", "No commit message")
-
-                # Fetch the diff for this commit
-                try:
-                    diff_url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits/{commit_id}/diff/{encoded_filename}?contextLines=0&at={encoded_branch}"
-                    diff_response = requests.get(diff_url, headers=self.headers)
-                    logging.debug(f"Diff URL: {diff_url}, Status: {diff_response.status_code}, Response: {diff_response.text}")
-                    diff_response.raise_for_status()
-                    diff_data = diff_response.json()
-                    changed_lines = []
-
-                    # Parse diff for the specific file
-                    for diff_item in diff_data.get("diffs", []):
-                        if diff_item.get("source") == filename or diff_item.get("destination") == filename:
-                            for hunk in diff_item.get("hunks", []):
-                                for segment in hunk.get("segments", []):
-                                    if segment["type"] == "ADDED":
-                                        changed_lines.extend(segment["lines"])
-                except requests.RequestException as e:
-                    logging.error(f"Failed to fetch diff for commit {commit_id}: {str(e)}")
-                    changed_lines = []
-                    self.output_text.insert(tk.END, f"Error fetching diff for commit {commit_id}: {str(e)}\n", "normal")
-
-                # Display commit info and changed lines
-                output = f"Commit: {commit_id}\nDate: {commit_date}\nAuthor: {commit_author}\nMessage: {commit_message}\n"
-                self.output_text.insert(tk.END, output, "normal")
-                
-                if changed_lines:
-                    for line in changed_lines:
-                        self.output_text.insert(tk.END, f"Code: {line}\n", "green")
-                else:
-                    self.output_text.insert(tk.END, "Code: No added lines in this commit\n", "green")
-                self.output_text.insert(tk.END, "\n", "normal")
-
-        except requests.RequestException as e:
-            logging.error(f"Failed to retrieve blame information: {str(e)}")
-            messagebox.showerror("Error", f"Failed to retrieve blame information: {str(e)}")
-
-    def get_tags(self, project_key, repo_name):
-        try:
-            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/tags?limit=100", headers=self.headers)
-            response.raise_for_status()
-            return [tag["displayId"] for tag in response.json().get("values", [])]
-        except requests.RequestException as e:
-            logging.error(f"Failed to fetch tags: {str(e)}")
-            return []
+    def copy_to_clipboard(self, tree):
+        data = []
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
+            data.append("\t".join(str(v) for v in values))
+        pyperclip.copy("\n".join(data))
+        messagebox.showinfo("Info", "Table data copied to clipboard!")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = BitbucketBlameGUI(root)
+    app = BitbucketParticipantsGUI(root)
     root.mainloop()
