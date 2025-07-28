@@ -5,16 +5,17 @@ import threading
 import urllib.parse
 import logging
 import pyperclip
+from datetime import datetime, timedelta
 
-class BitbucketParticipantsGUI:
+class BitbucketVulnerabilityGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Bitbucket Participants Viewer")
-        self.root.geometry("600x400")
+        self.root.title("Bitbucket Vulnerability Analyzer")
+        self.root.geometry("600x500")
         self.root.configure(bg="#2E2E2E")
 
         # Set up logging
-        logging.basicConfig(filename="bitbucket_participants.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+        logging.basicConfig(filename="bitbucket_vulnerability.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
         # Bitbucket API settings
         self.base_url = "https://crm.bitbucket.com/rest/api/latest"
@@ -40,7 +41,7 @@ class BitbucketParticipantsGUI:
         main_frame.pack(fill="both", expand=True)
 
         # Title
-        title_label = tk.Label(main_frame, text="Bitbucket Participants", font=("Helvetica", 16, "bold"), fg="#FFFFFF", bg="#2E2E2E")
+        title_label = tk.Label(main_frame, text="Bitbucket Vulnerability Analyzer", font=("Helvetica", 16, "bold"), fg="#FFFFFF", bg="#2E2E2E")
         title_label.pack(pady=10)
 
         # Project Combobox
@@ -55,26 +56,50 @@ class BitbucketParticipantsGUI:
         self.repo_var = tk.StringVar()
         self.repo_combo = ttk.Combobox(main_frame, textvariable=self.repo_var, width=50, font=("Helvetica", 10), state="readonly")
         self.repo_combo.pack(pady=5)
+        self.repo_combo.bind('<<ComboboxSelected>>', self.on_repo_select)
+
+        # Branch/Tag Combobox
+        tk.Label(main_frame, text="Select Branch/Tag:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
+        self.branch_var = tk.StringVar()
+        self.branch_combo = ttk.Combobox(main_frame, textvariable=self.branch_var, width=50, font=("Helvetica", 10), state="readonly")
+        self.branch_combo.pack(pady=5)
+
+        # File Path Input
+        tk.Label(main_frame, text="File Path (e.g., src/main.py):", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
+        self.file_entry = tk.Entry(main_frame, width=53, font=("Helvetica", 10))
+        self.file_entry.pack(pady=5)
+
+        # Line Numbers Input (optional)
+        tk.Label(main_frame, text="Line Numbers (e.g., 10-20, optional):", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
+        self.lines_entry = tk.Entry(main_frame, width=53, font=("Helvetica", 10))
+        self.lines_entry.pack(pady=5)
 
         # Buttons
         button_frame = tk.Frame(main_frame, bg="#2E2E2E")
         button_frame.pack(pady=20)
 
-        self.show_button = tk.Button(button_frame, text="Show Participants", command=self.show_participants,
-                                     font=("Helvetica", 10), bg="#4CAF50", fg="#FFFFFF", relief="flat",
-                                     activebackground="#45A049", padx=10, pady=5)
-        self.show_button.pack(side="left", padx=10)
-        self.show_button.bind("<Enter>", lambda e: self.show_button.config(bg="#66BB6A"))
-        self.show_button.bind("<Leave>", lambda e: self.show_button.config(bg="#4CAF50"))
+        self.analyze_button = tk.Button(button_frame, text="Analyze Code Age", command=self.analyze_code_age,
+                                       font=("Helvetica", 10), bg="#4CAF50", fg="#FFFFFF", relief="flat",
+                                       activebackground="#45A049", padx=10, pady=5)
+        self.analyze_button.pack(side="left", padx=10)
+        self.analyze_button.bind("<Enter>", lambda e: self.analyze_button.config(bg="#66BB6A"))
+        self.analyze_button.bind("<Leave>", lambda e: self.analyze_button.config(bg="#4CAF50"))
+
+        self.participants_button = tk.Button(button_frame, text="Show Participants", command=self.show_participants,
+                                            font=("Helvetica", 10), bg="#2196F3", fg="#FFFFFF", relief="flat",
+                                            activebackground="#1976D2", padx=10, pady=5)
+        self.participants_button.pack(side="left", padx=10)
+        self.participants_button.bind("<Enter>", lambda e: self.participants_button.config(bg="#42A5F5"))
+        self.participants_button.bind("<Leave>", lambda e: self.participants_button.config(bg="#2196F3"))
 
         self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_inputs,
-                                      font=("Helvetica", 10), bg="#F44336", fg="#FFFFFF", relief="flat",
-                                      activebackground="#D32F2F", padx=10, pady=5)
+                                     font=("Helvetica", 10), bg="#F44336", fg="#FFFFFF", relief="flat",
+                                     activebackground="#D32F2F", padx=10, pady=5)
         self.clear_button.pack(side="left", padx=10)
         self.clear_button.bind("<Enter>", lambda e: self.clear_button.config(bg="#EF5350"))
         self.clear_button.bind("<Leave>", lambda e: self.clear_button.config(bg="#F44336"))
 
-        # Loading label (hidden initially)
+        # Loading label
         self.loading_label = tk.Label(main_frame, text="Loading...", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E")
         self.animate_loading()
 
@@ -90,7 +115,11 @@ class BitbucketParticipantsGUI:
     def clear_inputs(self):
         self.project_var.set("")
         self.repo_var.set("")
+        self.branch_var.set("")
+        self.file_entry.delete(0, tk.END)
+        self.lines_entry.delete(0, tk.END)
         self.repo_combo['values'] = []
+        self.branch_combo['values'] = []
         self.project_combo.focus_set()
 
     def fetch_projects(self):
@@ -139,6 +168,199 @@ class BitbucketParticipantsGUI:
         finally:
             self.root.after(0, lambda: setattr(self, "loading", False))
 
+    def on_repo_select(self, event):
+        project_key = self.project_var.get()
+        repo_name = self.repo_var.get()
+        if project_key and repo_name:
+            self.loading = True
+            self.loading_label.pack(pady=10)
+            threading.Thread(target=self._fetch_branches_thread, args=(project_key, repo_name), daemon=True).start()
+
+    def _fetch_branches_thread(self, project_key, repo_name):
+        try:
+            branches = []
+            # Fetch branches
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/branches?limit=1000", headers=self.headers)
+            response.raise_for_status()
+            branches.extend([branch["displayId"] for branch in response.json().get("values", [])])
+            logging.debug(f"Branches fetched for {repo_name}: {len(branches)} branches")
+            # Fetch tags
+            response = requests.get(f"{self.base_url}/projects/{project_key}/repos/{repo_name}/tags?limit=1000", headers=self.headers)
+            response.raise_for_status()
+            branches.extend([tag["displayId"] for tag in response.json().get("values", [])])
+            logging.debug(f"Tags fetched for {repo_name}: {len(branches)} total branches/tags")
+            branches = sorted(branches)
+            self.root.after(0, lambda: self.branch_combo.configure(values=branches))
+            if branches:
+                self.root.after(0, lambda: self.branch_var.set("develop" if "develop" in branches else branches[0]))
+            else:
+                self.root.after(0, lambda: self.branch_combo.configure(values=[]))
+        except requests.RequestException as e:
+            logging.error(f"Failed to fetch branches/tags for {repo_name}: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch branches/tags: {str(e)}"))
+        finally:
+            self.root.after(0, lambda: setattr(self, "loading", False))
+
+    def validate_lines(self, lines_str):
+        if not lines_str:
+            return None
+        try:
+            start, end = map(int, lines_str.split('-'))
+            if start <= 0 or end < start:
+                raise ValueError
+            return start, end
+        except ValueError:
+            messagebox.showerror("Error", "Invalid line numbers format. Use 'start-end' (e.g., 10-20).")
+            return False
+
+    def check_file_exists(self, project_key, repo_name, filename, branch):
+        try:
+            encoded_branch = urllib.parse.quote(branch, safe='')
+            encoded_filename = urllib.parse.quote(filename, safe='')
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/browse/{encoded_filename}?at={encoded_branch}"
+            response = requests.get(url, headers=self.headers)
+            logging.debug(f"File check URL: {url}, Status: {response.status_code}")
+            return response.status_code == 200
+        except requests.RequestException as e:
+            logging.error(f"Failed to check file existence: {str(e)}")
+            return False
+
+    def analyze_code_age(self):
+        project_key = self.project_var.get()
+        repo_name = self.repo_var.get()
+        branch = self.branch_var.get()
+        filename = self.file_entry.get().strip()
+        lines_str = self.lines_entry.get().strip()
+
+        if not project_key or not repo_name or not branch or not filename:
+            messagebox.showerror("Error", "Please select a project, repository, branch, and enter a file path.")
+            return
+
+        # Validate line numbers
+        line_range = self.validate_lines(lines_str)
+        if line_range is False:
+            return
+
+        # Check if file exists
+        if not self.check_file_exists(project_key, repo_name, filename, branch):
+            messagebox.showerror("Error", f"File '{filename}' not found in '{branch}' of repository '{repo_name}'.")
+            return
+
+        self.loading = True
+        self.loading_label.pack(pady=10)
+        threading.Thread(target=self._analyze_code_age_thread, args=(project_key, repo_name, branch, filename, line_range), daemon=True).start()
+
+    def _analyze_code_age_thread(self, project_key, repo_name, branch, filename, line_range):
+        try:
+            encoded_branch = urllib.parse.quote(branch, safe='')
+            encoded_filename = urllib.parse.quote(filename, safe='')
+            url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits?path={encoded_filename}&at={encoded_branch}&limit=1000"
+            response = requests.get(url, headers=self.headers)
+            logging.debug(f"Commits URL: {url}, Status: {response.status_code}, Response: {response.text}")
+            response.raise_for_status()
+            commits = response.json().get("values", [])
+
+            if not commits:
+                self.root.after(0, lambda: messagebox.showerror("Error", f"No commits found for file '{filename}' in '{branch}'."))
+                return
+
+            current_date = datetime(2025, 7, 28)  # Hardcoded for July 28, 2025
+            six_months_ago = current_date - timedelta(days=180)
+            commit_data = []
+
+            for commit in commits:
+                commit_id = commit["id"]
+                commit_date = datetime.fromtimestamp(commit["authorTimestamp"] / 1000)
+                commit_author = commit["author"].get("displayName", "N/A")
+                commit_message = commit.get("message", "No message")
+
+                # Determine code age
+                age = "New" if commit_date >= six_months_ago else "Old"
+
+                # Fetch diff if line numbers are provided
+                changed_lines = []
+                if line_range:
+                    try:
+                        diff_url = f"{self.base_url}/projects/{project_key}/repos/{repo_name}/commits/{commit_id}/diff/{encoded_filename}?contextLines=0&at={encoded_branch}"
+                        diff_response = requests.get(diff_url, headers=self.headers)
+                        logging.debug(f"Diff URL: {diff_url}, Status: {diff_response.status_code}, Response: {diff_response.text}")
+                        diff_response.raise_for_status()
+                        diff_data = diff_response.json()
+                        for diff_item in diff_data.get("diffs", []):
+                            if diff_item.get("source") == filename or diff_item.get("destination") == filename:
+                                for hunk in diff_item.get("hunks", []):
+                                    for segment in hunk.get("segments", []):
+                                        if segment["type"] in ["ADDED", "CHANGED"]:
+                                            for line in segment["lines"]:
+                                                line_num = line.get("destination", 0)
+                                                if line_range[0] <= line_num <= line_range[1]:
+                                                    changed_lines.append(line["line"])
+                    except requests.RequestException as e:
+                        logging.error(f"Failed to fetch diff for commit {commit_id}: {str(e)}")
+                        changed_lines.append(f"Error fetching diff: {str(e)}")
+
+                commit_data.append({
+                    "id": commit_id[:8],  # Shortened for display
+                    "author": commit_author,
+                    "date": commit_date.strftime("%Y-%m-%d %H:%M:%S"),
+                    "message": commit_message,
+                    "age": age,
+                    "lines": changed_lines
+                })
+
+            self.root.after(0, lambda: self.display_commits(commit_data, filename, line_range))
+        except requests.RequestException as e:
+            logging.error(f"Failed to analyze code age: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to analyze code age: {str(e)}"))
+        finally:
+            self.root.after(0, lambda: setattr(self, "loading", False))
+
+    def display_commits(self, commit_data, filename, line_range):
+        popup = Toplevel(self.root)
+        popup.title(f"Code Age for {filename}")
+        popup.geometry("800x500")
+        popup.configure(bg="#2E2E2E")
+        popup.transient(self.root)
+        popup.grab_set()
+
+        table_frame = tk.Frame(popup, bg="#2E2E2E", padx=10, pady=10)
+        table_frame.pack(fill="both", expand=True)
+
+        columns = ("Commit ID", "Author", "Date", "Age", "Message", "Lines")
+        tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+        tree.heading("Commit ID", text="Commit ID")
+        tree.heading("Author", text="Author")
+        tree.heading("Date", text="Date")
+        tree.heading("Age", text="Age")
+        tree.heading("Message", text="Message")
+        tree.heading("Lines", text="Changed Lines")
+        tree.column("Commit ID", width=100)
+        tree.column("Author", width=150)
+        tree.column("Date", width=150)
+        tree.column("Age", width=50)
+        tree.column("Message", width=200)
+        tree.column("Lines", width=200)
+        tree.pack(side="left", fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        style = ttk.Style()
+        style.configure("Treeview", background="#3C3C3C", foreground="#FFFFFF", fieldbackground="#3C3C3C")
+        style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"), background="#4CAF50", foreground="#FFFFFF")
+
+        for commit in commit_data:
+            lines = ", ".join(commit["lines"]) if commit["lines"] else "N/A"
+            tree.insert("", "end", values=(commit["id"], commit["author"], commit["date"], commit["age"], commit["message"], lines))
+
+        copy_button = tk.Button(popup, text="Copy to Clipboard", command=lambda: self.copy_to_clipboard(tree),
+                               font=("Helvetica", 10), bg="#2196F3", fg="#FFFFFF", relief="flat",
+                               activebackground="#1976D2", padx=10, pady=5)
+        copy_button.pack(pady=10)
+        copy_button.bind("<Enter>", lambda e: copy_button.config(bg="#42A5F5"))
+        copy_button.bind("<Leave>", lambda e: copy_button.config(bg="#2196F3"))
+
     def show_participants(self):
         project_key = self.project_var.get()
         repo_name = self.repo_var.get()
@@ -167,7 +389,6 @@ class BitbucketParticipantsGUI:
             self.root.after(0, lambda: setattr(self, "loading", False))
 
     def display_participants(self, participants):
-        # Create popup window
         popup = Toplevel(self.root)
         popup.title("Repository Participants")
         popup.geometry("600x400")
@@ -175,11 +396,9 @@ class BitbucketParticipantsGUI:
         popup.transient(self.root)
         popup.grab_set()
 
-        # Table frame
         table_frame = tk.Frame(popup, bg="#2E2E2E", padx=10, pady=10)
         table_frame.pack(fill="both", expand=True)
 
-        # Table
         columns = ("Name", "Email")
         tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
         tree.heading("Name", text="Display Name")
@@ -188,26 +407,22 @@ class BitbucketParticipantsGUI:
         tree.column("Email", width=300)
         tree.pack(side="left", fill="both", expand=True)
 
-        # Scrollbar
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
         scrollbar.pack(side="right", fill="y")
         tree.configure(yscrollcommand=scrollbar.set)
 
-        # Style
         style = ttk.Style()
         style.configure("Treeview", background="#3C3C3C", foreground="#FFFFFF", fieldbackground="#3C3C3C")
         style.configure("Treeview.Heading", font=("Helvetica", 10, "bold"), background="#4CAF50", foreground="#FFFFFF")
 
-        # Populate table
         for participant in participants:
             display_name = participant.get("displayName", "N/A")
             email = participant.get("emailAddress", "N/A")
             tree.insert("", "end", values=(display_name, email))
 
-        # Copy to Clipboard button
         copy_button = tk.Button(popup, text="Copy to Clipboard", command=lambda: self.copy_to_clipboard(tree),
-                                font=("Helvetica", 10), bg="#2196F3", fg="#FFFFFF", relief="flat",
-                                activebackground="#1976D2", padx=10, pady=5)
+                               font=("Helvetica", 10), bg="#2196F3", fg="#FFFFFF", relief="flat",
+                               activebackground="#1976D2", padx=10, pady=5)
         copy_button.pack(pady=10)
         copy_button.bind("<Enter>", lambda e: copy_button.config(bg="#42A5F5"))
         copy_button.bind("<Leave>", lambda e: copy_button.config(bg="#2196F3"))
@@ -222,5 +437,5 @@ class BitbucketParticipantsGUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = BitbucketParticipantsGUI(root)
+    app = BitbucketVulnerabilityGUI(root)
     root.mainloop()
