@@ -13,9 +13,13 @@ class SearchableCombobox(ttk.Combobox):
         super().__init__(master, **kwargs)
         self.values = []
         self.original_values = []
+        self.is_dropdown_open = False
         self.bind('<KeyRelease>', self.on_keyrelease)
         self.bind('<FocusIn>', self.on_focus_in)
+        self.bind('<FocusOut>', self.on_focus_out)
+        self.bind('<<ComboboxSelected>>', self.on_select)
         self['state'] = 'normal'
+        self['postcommand'] = self.on_postcommand
 
     def set_values(self, values):
         self.original_values = values
@@ -29,10 +33,28 @@ class SearchableCombobox(ttk.Combobox):
         else:
             self.values = self.original_values
         self['values'] = self.values
-        self.event_generate('<Down>')
+        if not self.is_dropdown_open:
+            self.event_generate('<Down>')
+            self.is_dropdown_open = True
 
     def on_focus_in(self, event):
-        self.event_generate('<Down>')
+        if not self.is_dropdown_open and not self.get():  # Only open if not already open and no text
+            self.event_generate('<Down>')
+            self.is_dropdown_open = True
+
+    def on_focus_out(self, event):
+        if self.is_dropdown_open:
+            self.event_generate('<Escape>')  # Close dropdown
+            self.is_dropdown_open = False
+
+    def on_select(self, event):
+        if self.is_dropdown_open:
+            self.event_generate('<Escape>')  # Close dropdown after selection
+            self.is_dropdown_open = False
+        self.focus_set()  # Keep focus on combobox
+
+    def on_postcommand(self):
+        self.is_dropdown_open = True
 
 class BitbucketParticipantsGUI:
     def __init__(self, root):
