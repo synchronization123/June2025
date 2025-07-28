@@ -4,57 +4,7 @@ import requests
 import threading
 import urllib.parse
 import logging
-import json
 import pyperclip
-from datetime import datetime
-
-class SearchableCombobox(ttk.Combobox):
-    def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
-        self.values = []
-        self.original_values = []
-        self.is_dropdown_open = False
-        self.bind('<KeyRelease>', self.on_keyrelease)
-        self.bind('<FocusIn>', self.on_focus_in)
-        self.bind('<FocusOut>', self.on_focus_out)
-        self.bind('<<ComboboxSelected>>', self.on_select)
-        self['state'] = 'normal'
-        self['postcommand'] = self.on_postcommand
-
-    def set_values(self, values):
-        self.original_values = values
-        self.values = values
-        self['values'] = values
-
-    def on_keyrelease(self, event):
-        query = self.get().lower()
-        if query:
-            self.values = [v for v in self.original_values if query in v.lower()]
-        else:
-            self.values = self.original_values
-        self['values'] = self.values
-        if not self.is_dropdown_open:
-            self.event_generate('<Down>')
-            self.is_dropdown_open = True
-
-    def on_focus_in(self, event):
-        if not self.is_dropdown_open and not self.get():  # Only open if not already open and no text
-            self.event_generate('<Down>')
-            self.is_dropdown_open = True
-
-    def on_focus_out(self, event):
-        if self.is_dropdown_open:
-            self.event_generate('<Escape>')  # Close dropdown
-            self.is_dropdown_open = False
-
-    def on_select(self, event):
-        if self.is_dropdown_open:
-            self.event_generate('<Escape>')  # Close dropdown after selection
-            self.is_dropdown_open = False
-        self.focus_set()  # Keep focus on combobox
-
-    def on_postcommand(self):
-        self.is_dropdown_open = True
 
 class BitbucketParticipantsGUI:
     def __init__(self, root):
@@ -93,17 +43,17 @@ class BitbucketParticipantsGUI:
         title_label = tk.Label(main_frame, text="Bitbucket Participants", font=("Helvetica", 16, "bold"), fg="#FFFFFF", bg="#2E2E2E")
         title_label.pack(pady=10)
 
-        # Project Searchable Combobox
-        tk.Label(main_frame, text="Search Project:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
+        # Project Combobox
+        tk.Label(main_frame, text="Select Project:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
         self.project_var = tk.StringVar()
-        self.project_combo = SearchableCombobox(main_frame, textvariable=self.project_var, width=50, font=("Helvetica", 10))
+        self.project_combo = ttk.Combobox(main_frame, textvariable=self.project_var, width=50, font=("Helvetica", 10), state="readonly")
         self.project_combo.pack(pady=5)
         self.project_combo.bind('<<ComboboxSelected>>', self.on_project_select)
 
-        # Repository Searchable Combobox
-        tk.Label(main_frame, text="Search Repository:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
+        # Repository Combobox
+        tk.Label(main_frame, text="Select Repository:", font=("Helvetica", 10), fg="#FFFFFF", bg="#2E2E2E").pack(anchor="w")
         self.repo_var = tk.StringVar()
-        self.repo_combo = SearchableCombobox(main_frame, textvariable=self.repo_var, width=50, font=("Helvetica", 10))
+        self.repo_combo = ttk.Combobox(main_frame, textvariable=self.repo_var, width=50, font=("Helvetica", 10), state="readonly")
         self.repo_combo.pack(pady=5)
 
         # Buttons
@@ -140,7 +90,7 @@ class BitbucketParticipantsGUI:
     def clear_inputs(self):
         self.project_var.set("")
         self.repo_var.set("")
-        self.repo_combo.set_values([])
+        self.repo_combo['values'] = []
         self.project_combo.focus_set()
 
     def fetch_projects(self):
@@ -153,9 +103,11 @@ class BitbucketParticipantsGUI:
             response = requests.get(f"{self.base_url}/projects?limit=1000", headers=self.headers)
             response.raise_for_status()
             projects = response.json().get("values", [])
-            logging.debug(f"Projects fetched: {len(projects)}")
-            project_keys = [project["key"] for project in projects]
-            self.root.after(0, lambda: self.project_combo.set_values(project_keys))
+            logging.debug(f"Projects fetched: {len(projects)} projects")
+            project_keys = sorted([project["key"] for project in projects])  # Sort for user-friendliness
+            self.root.after(0, lambda: self.project_combo.configure(values=project_keys))
+            if project_keys:
+                self.root.after(0, lambda: self.project_var.set(project_keys[0]))
         except requests.RequestException as e:
             logging.error(f"Failed to fetch projects: {str(e)}")
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch projects: {str(e)}"))
@@ -174,11 +126,15 @@ class BitbucketParticipantsGUI:
             response = requests.get(f"{self.base_url}/projects/{project_key}/repos?limit=1000", headers=self.headers)
             response.raise_for_status()
             repos = response.json().get("values", [])
-            logging.debug(f"Repositories fetched for {project_key}: {len(repos)}")
-            repo_names = [repo["name"] for repo in repos]
-            self.root.after(0, lambda: self.repo_combo.set_values(repo_names))
+            logging.debug(f"Repositories fetched for {project_key}: {len(repos)} repos")
+            repo_names = sorted([repo["name"] for repo in repos])  # Sort for user-friendliness
+            self.root.after(0, lambda: self.repo_combo.configure(values=repo_names))
+            if repo_names:
+                self.root.after(0, lambda: self.repo_var.set(repo_names[0]))
+            else:
+                self.root.after(0, lambda: self.repo_combo.configure(values=[]))
         except requests.RequestException as e:
-            logging.error(f"Failed to fetch repositories: {str(e)}")
+            logging.error(f"Failed to fetch repositories for {project_key}: {str(e)}")
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch repositories: {str(e)}"))
         finally:
             self.root.after(0, lambda: setattr(self, "loading", False))
