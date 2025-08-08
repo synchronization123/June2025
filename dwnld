@@ -1,5 +1,254 @@
-sudo yum install -y yum-utils device-mapper-persistent-data lvm2
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install -y docker-ce docker-ce-cli containerd.io
-sudo systemctl start docker
-sudo systemctl enable docker
+#!/usr/bin/env python3
+"""
+Method-aware offline XXE Vulnerability Scanner for Java/JSP
+
+- Scans recursively for Java/JSP files.
+- Uses regex heuristics to find XXE-related risky code.
+- Tracks parser creation variables (e.g., dbf) and searches the rest of the containing method
+  for hardening (setFeature, FEATURE_SECURE_PROCESSING, setExpandEntityReferences, etc.).
+- If parser is created and not hardened within the same method, flags "Unhardened parser (method-scope)".
+- Outputs results to Excel with severity (High/Medium/Low) and color coding.
+- Runs fully offline (no network).
+
+Usage:
+    python xxe_scanner_methodaware.py /path/to/code output.xlsx
+"""
+
+import os
+import re
+import sys
+from pathlib import Path
+
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill
+    from openpyxl.utils import get_column_letter
+except ImportError:
+    print("[!] Install openpyxl: pip install openpyxl")
+    sys.exit(1)
+
+EXTENSIONS = {'.java', '.jsp', '.jspx', '.tag', '.jst', '.jsf'}
+
+# Basic risky patterns (line-level)
+PATTERNS = [
+    ("DOCTYPE_inline", re.compile(r'<!DOCTYPE\s+[^>]+>', re.I), "High"),
+    ("setExpandEntityReferences_true", re.compile(r'\bsetExpandEntityReferences\s*\(\s*true\s*\)', re.I), "High"),
+    ("setFeature_external_entities_true", re.compile(r'setFeature\s*\(\s*["\'].*external.*entities["\']\s*,\s*true', re.I), "High"),
+    ("resolveEntity_override", re.compile(r'\bresolveEntity\s*\(', re.I), "High"),
+    ("EntityResolver_impl", re.compile(r'\bimplements\s+EntityResolver\b', re.I), "Medium"),
+    ("unsecure_factory_property", re.compile(r'FEATURE_SECURE_PROCESSING["\']\s*,\s*false', re.I), "High"),
+    ("parse_untrusted_input", re.compile(r'\bparse\s*\(\s*(request|getParameter|InputStream|new\s+InputSource)', re.I), "High"),
+    ("ExternalGeneralEntities", re.compile(r'external-general-entities|external-parameter-entities', re.I), "Medium"),
+]
+
+# Parser creation detection (capture assigned variable when possible)
+# Examples matched:
+#   DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+#   var dbf = DocumentBuilderFactory.newInstance();
+#   DocumentBuilderFactory.newInstance();   (no var)
+PARSER_CREATION_PATTERNS = [
+    re.compile(r'\b([\w\<\>\[\]]+\s+)?(?P<var>\w+)\s*=\s*DocumentBuilderFactory\.newInstance\s*\(', re.I),
+    re.compile(r'\b([\w\<\>\[\]]+\s+)?(?P<var>\w+)\s*=\s*SAXParserFactory\.newInstance\s*\(', re.I),
+    re.compile(r'\b([\w\<\>\[\]]+\s+)?(?P<var>\w+)\s*=\s*XMLInputFactory\.newFactory\s*\(', re.I),
+    # fallback: direct call without assignment
+    re.compile(r'\bDocumentBuilderFactory\.newInstance\s*\(', re.I),
+    re.compile(r'\bSAXParserFactory\.newInstance\s*\(', re.I),
+    re.compile(r'\bXMLInputFactory\.newFactory\s*\(', re.I),
+]
+
+# Hardening checks we look for in method scope (can be either generic or variable-specific)
+# Examples:
+#   dbf.setFeature("http://.../disallow-doctype-decl", true);
+#   factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+#   dbf.setExpandEntityReferences(false);
+HARDENING_PATTERNS_GENERIC = [
+    re.compile(r'setFeature\s*\(\s*["\'].*disallow-doctype-decl["\']\s*,\s*true', re.I),
+    re.compile(r'setFeature\s*\(\s*["\'].*external.*entities["\']\s*,\s*false', re.I),
+    re.compile(r'FEATURE_SECURE_PROCESSING', re.I),
+    re.compile(r'setExpandEntityReferences\s*\(\s*false\s*\)', re.I),
+]
+
+# Hardening patterns that include a variable name; we'll format with var name when checking
+HARDENING_PATTERNS_VAR_FORMAT = [
+    r'{var}\.setFeature\s*\(\s*["\'].*disallow-doctype-decl["\']\s*,\s*true',
+    r'{var}\.setFeature\s*\(\s*["\'].*external.*entities["\']\s*,\s*false',
+    r'{var}\.setExpandEntityReferences\s*\(\s*false\s*\)',
+    r'{var}\.setFeature\s*\(\s*XMLConstants\.FEATURE_SECURE_PROCESSING\s*,\s*true',
+]
+
+SEVERITY_COLOR = {
+    "High": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),   # Red
+    "Medium": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), # Yellow
+    "Low": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),    # Green
+}
+
+# Helper: find end index of the method/block starting at or after start_line index (0-based)
+def find_method_end(lines, start_idx):
+    """
+    Given file lines and start_idx (0-based) where a parser creation was found,
+    locate the end of the containing method by scanning for braces.
+    Strategy:
+      - Seek forward to find the first '{' after start_idx (start of block).
+      - Then track brace count until it returns to zero -> that's the end index.
+      - If no '{' found, fallback to scanning some number of lines ahead (heuristic).
+    Returns end_index (inclusive, 0-based). If not found, returns min(len(lines)-1, start_idx+200)
+    """
+    n = len(lines)
+    # find first '{' after start_idx (including same line)
+    open_idx = None
+    for i in range(start_idx, min(n, start_idx + 300)):  # limit search
+        if '{' in lines[i]:
+            open_idx = i
+            break
+    if open_idx is None:
+        # fallback: treat rest of file up to a window as method
+        return min(n - 1, start_idx + 200)
+
+    brace_count = 0
+    for j in range(open_idx, n):
+        # count braces (naive, ignores braces in strings/comments)
+        brace_count += lines[j].count('{')
+        brace_count -= lines[j].count('}')
+        if brace_count <= 0:
+            return j
+    return min(n - 1, open_idx + 200)
+
+def scan_file(filepath):
+    findings = []
+    try:
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
+            lines = fh.readlines()
+    except Exception:
+        return findings
+
+    n = len(lines)
+    # Pre-scan for simple risky patterns (line-level)
+    for idx, raw in enumerate(lines):
+        line = raw.rstrip('\n')
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # skip obvious comment lines
+        if stripped.startswith('//'):
+            continue
+        for name, pat, severity in PATTERNS:
+            if pat.search(stripped):
+                findings.append({
+                    "filepath": str(filepath),
+                    "filename": os.path.basename(filepath),
+                    "line_number": idx + 1,
+                    "vulnerable_code_line": stripped,
+                    "pattern_name": name,
+                    "severity": severity
+                })
+
+    # Now method-aware parser creation analysis
+    for idx, raw in enumerate(lines):
+        text = raw.strip()
+        if not text or text.startswith('//'):
+            continue
+
+        matched_any = False
+        for cre in PARSER_CREATION_PATTERNS:
+            m = cre.search(text)
+            if m:
+                matched_any = True
+                # try to get variable name group if present
+                varname = None
+                if 'var' in m.groupdict() and m.groupdict()['var']:
+                    varname = m.groupdict()['var']
+                else:
+                    # Try to capture forms like: DocumentBuilderFactory dbf = ...
+                    # m.group(1) might contain type+space; attempt alternative capture
+                    alt = re.search(r'\bDocumentBuilderFactory\s+(\w+)\s*=', text)
+                    if alt:
+                        varname = alt.group(1)
+                    else:
+                        alt2 = re.search(r'\bSAXParserFactory\s+(\w+)\s*=', text)
+                        if alt2:
+                            varname = alt2.group(1)
+                # Determine method end
+                method_end = find_method_end(lines, idx)
+                # Collect method scope as joined lines (or check line-by-line)
+                hardened = False
+                # Check generic hardening anywhere in method scope
+                for j in range(idx, method_end + 1):
+                    snippet = lines[j].strip()
+                    for gpat in HARDENING_PATTERNS_GENERIC:
+                        if gpat.search(snippet):
+                            hardened = True
+                            break
+                    if hardened:
+                        break
+                # If variable name present, check for variable-specific hardening
+                if not hardened and varname:
+                    for pattern_fmt in HARDENING_PATTERNS_VAR_FORMAT:
+                        regex = re.compile(pattern_fmt.format(var=re.escape(varname)), re.I)
+                        for j in range(idx, method_end + 1):
+                            if regex.search(lines[j]):
+                                hardened = True
+                                break
+                        if hardened:
+                            break
+                # If not hardened, raise finding
+                if not hardened:
+                    findings.append({
+                        "filepath": str(filepath),
+                        "filename": os.path.basename(filepath),
+                        "line_number": idx + 1,
+                        "vulnerable_code_line": text,
+                        "pattern_name": "Unhardened XML parser (method-scope)",
+                        "severity": "High"
+                    })
+                # Also, if creation was plain (no var), we already covered generic hardening check
+                # break to avoid duplicate matching for same parser creation pattern
+                break
+        if matched_any:
+            # continue scanning remaining lines (multiple parsers per file allowed)
+            continue
+
+    return findings
+
+def scan_directory(root_path):
+    all_findings = []
+    for dirpath, _, filenames in os.walk(root_path):
+        for fname in filenames:
+            if os.path.splitext(fname)[1].lower() in EXTENSIONS:
+                fpath = Path(dirpath) / fname
+                all_findings.extend(scan_file(fpath))
+    return all_findings
+
+def save_to_excel(findings, outpath):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "XXE Findings"
+    headers = ["filepath", "filename", "line_number", "vulnerable_code_line", "pattern_name", "severity"]
+    ws.append(headers)
+    for r in findings:
+        ws.append([r["filepath"], r["filename"], r["line_number"], r["vulnerable_code_line"], r["pattern_name"], r["severity"]])
+    # Apply fills
+    for row in ws.iter_rows(min_row=2, max_col=len(headers)):
+        severity = row[-1].value
+        if severity in SEVERITY_COLOR:
+            for cell in row:
+                cell.fill = SEVERITY_COLOR[severity]
+    # Auto width
+    for i, col in enumerate(headers, start=1):
+        max_len = max((len(str(cell.value)) if cell.value else 0) for cell in ws[get_column_letter(i)])
+        ws.column_dimensions[get_column_letter(i)].width = min(max_len + 2, 100)
+    wb.save(outpath)
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python xxe_scanner_methodaware.py /path/to/code output.xlsx")
+        sys.exit(1)
+    root_dir = sys.argv[1]
+    out_file = sys.argv[2]
+    print(f"[+] Scanning: {root_dir}")
+    findings = scan_directory(root_dir)
+    print(f"[+] Total findings: {len(findings)}")
+    save_to_excel(findings, out_file)
+    print(f"[+] Saved to {out_file}")
+
+if __name__ == "__main__":
+    main()
