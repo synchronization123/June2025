@@ -1,210 +1,72 @@
-#!/usr/bin/env python3
-"""
-Method-aware offline XXE Vulnerability Scanner for Java/JSP
-
-- Scans recursively for Java/JSP files.
-- Uses regex heuristics to find XXE-related risky code.
-- Tracks parser creation variables (e.g., dbf) and searches the rest of the containing method
-  for hardening (setFeature, FEATURE_SECURE_PROCESSING, setExpandEntityReferences, etc.).
-- If parser is created and not hardened within the same method, flags "Unhardened parser (method-scope)".
-- Outputs results to Excel with severity (High/Medium/Low) and color coding in the script's directory.
-- Runs fully offline (no network).
-
-Usage:
-    python xxe_scanner_methodaware.py /path/to/code
-"""
-
 import os
 import re
-import sys
+import pandas as pd
 from pathlib import Path
 
-try:
-    from openpyxl import Workbook
-    from openpyxl.styles import PatternFill
-    from openpyxl.utils import get_column_letter
-except ImportError:
-    print("[!] Install openpyxl: pip install openpyxl")
-    sys.exit(1)
-
-EXTENSIONS = {'.java', '.jsp', '.jspx', '.tag', '.jst', '.jsf'}
-
-# Basic risky patterns (line-level)
-PATTERNS = [
-    ("DOCTYPE_inline", re.compile(r'<!DOCTYPE\s+[^>]+>', re.I), "High"),
-    ("setExpandEntityReferences_true", re.compile(r'\bsetExpandEntityReferences\s*\(\s*true\s*\)', re.I), "High"),
-    ("setFeature_external_entities_true", re.compile(r'setFeature\s*\(\s*["\'].*external.*entities["\']\s*,\s*true', re.I), "High"),
-    ("resolveEntity_override", re.compile(r'\bresolveEntity\s*\(', re.I), "High"),
-    ("EntityResolver_impl", re.compile(r'\bimplements\s+EntityResolver\b', re.I), "Medium"),
-    ("unsecure_factory_property", re.compile(r'FEATURE_SECURE_PROCESSING["\']\s*,\s*false', re.I), "High"),
-    ("parse_untrusted_input", re.compile(r'\bparse\s*\(\s*(request|getParameter|InputStream|new\s+InputSource)', re.I), "High"),
-    ("ExternalGeneralEntities", re.compile(r'external-general-entities|external-parameter-entities', re.I), "Medium"),
+# Define regex patterns for potential XXE vulnerabilities in JSP files
+xxe_patterns = [
+    r'<!DOCTYPE\s+[^>]*\s*\[.*?!ENTITY\s+[^>]*>',  # DOCTYPE with ENTITY declaration
+    r'<!ENTITY\s+[^>]*>',                          # ENTITY declaration
+    r'XMLInputFactory\s*\.\s*newInstance\s*\(\s*\)',  # XMLInputFactory usage
+    r'DocumentBuilderFactory\s*\.\s*newInstance\s*\(\s*\)',  # DocumentBuilderFactory usage
+    r'SAXParserFactory\s*\.\s*newInstance\s*\(\s*\)',  # SAXParserFactory usage
+    r'javax\.xml\.parsers\.DocumentBuilder\s*',     # DocumentBuilder usage
+    r'javax\.xml\.stream\.XMLInputFactory\s*',     # XMLInputFactory import or usage
+    r'org\.xml\.sax\.helpers\.XMLReaderFactory\s*'  # XMLReaderFactory usage
 ]
 
-# Parser creation detection (capture assigned variable when possible)
-PARSER_CREATION_PATTERNS = [
-    re.compile(r'\b([\w\<\>\[\]]+\s+)?(?P<var>\w+)\s*=\s*DocumentBuilderFactory\.newInstance\s*\(', re.I),
-    re.compile(r'\b([\w\<\>\[\]]+\s+)?(?P<var>\w+)\s*=\s*SAXParserFactory\.newInstance\s*\(', re.I),
-    re.compile(r'\b([\w\<\>\[\]]+\s+)?(?P<var>\w+)\s*=\s*XMLInputFactory\.newFactory\s*\(', re.I),
-    re.compile(r'\bDocumentBuilderFactory\.newInstance\s*\(', re.I),
-    re.compile(r'\bSAXParserFactory\.newInstance\s*\(', re.I),
-    re.compile(r'\bXMLInputFactory\.newFactory\s*\(', re.I),
-]
-
-# Hardening checks we look for in method scope
-HARDENING_PATTERNS_GENERIC = [
-    re.compile(r'setFeature\s*\(\s*["\'].*disallow-doctype-decl["\']\s*,\s*true', re.I),
-    re.compile(r'setFeature\s*\(\s*["\'].*external.*entities["\']\s*,\s*false', re.I),
-    re.compile(r'FEATURE_SECURE_PROCESSING', re.I),
-    re.compile(r'setExpandEntityReferences\s*\(\s*false\s*\)', re.I),
-]
-
-HARDENING_PATTERNS_VAR_FORMAT = [
-    r'{var}\.setFeature\s*\(\s*["\'].*disallow-doctype-decl["\']\s*,\s*true',
-    r'{var}\.setFeature\s*\(\s*["\'].*external.*entities["\']\s*,\s*false',
-    r'{var}\.setExpandEntityReferences\s*\(\s*false\s*\)',
-    r'{var}\.setFeature\s*\(\s*XMLConstants\.FEATURE_SECURE_PROCESSING\s*,\s*true',
-]
-
-SEVERITY_COLOR = {
-    "High": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),   # Red
-    "Medium": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"), # Yellow
-    "Low": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),    # Green
-}
-
-def find_method_end(lines, start_idx):
-    """
-    Given file lines and start_idx (0-based), locate the end of the containing method by scanning for braces.
-    Returns end_index (inclusive, 0-based). If not found, returns min(len(lines)-1, start_idx+200)
-    """
-    n = len(lines)
-    open_idx = None
-    for i in range(start_idx, min(n, start_idx + 300)):
-        if '{' in lines[i]:
-            open_idx = i
-            break
-    if open_idx is None:
-        return min(n - 1, start_idx + 200)
-
-    brace_count = 0
-    for j in range(open_idx, n):
-        brace_count += lines[j].count('{')
-        brace_count -= lines[j].count('}')
-        if brace_count <= 0:
-            return j
-    return min(n - 1, open_idx + 200)
-
-def scan_file(filepath):
+def scan_file(file_path):
+    """Scan a single JSP file for XXE vulnerabilities and return findings."""
     findings = []
     try:
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as fh:
-            lines = fh.readlines()
-    except Exception:
-        return findings
-
-    n = len(lines)
-    for idx, raw in enumerate(lines):
-        line = raw.rstrip('\n')
-        stripped = line.strip()
-        if not stripped or stripped.startswith('//'):
-            continue
-        for name, pat, severity in PATTERNS:
-            if pat.search(stripped):
-                findings.append({
-                    "filepath": str(filepath),
-                    "filename": os.path.basename(filepath),
-                    "line_number": idx + 1,
-                    "vulnerable_code_line": stripped,
-                    "pattern_name": name,
-                    "severity": severity
-                })
-
-    for idx, raw in enumerate(lines):
-        text = raw.strip()
-        if not text or text.startswith('//'):
-            continue
-        matched_any = False
-        for cre in PARSER_CREATION_PATTERNS:
-            m = cre.search(text)
-            if m:
-                matched_any = True
-                varname = m.groupdict().get('var')
-                if not varname:
-                    alt = re.search(r'\b(DocumentBuilderFactory|SAXParserFactory)\s+(\w+)\s*=', text)
-                    varname = alt.group(2) if alt else None
-                method_end = find_method_end(lines, idx)
-                hardened = False
-                for j in range(idx, method_end + 1):
-                    snippet = lines[j].strip()
-                    for gpat in HARDENING_PATTERNS_GENERIC:
-                        if gpat.search(snippet):
-                            hardened = True
-                            break
-                    if hardened:
-                        break
-                if not hardened and varname:
-                    for pattern_fmt in HARDENING_PATTERNS_VAR_FORMAT:
-                        regex = re.compile(pattern_fmt.format(var=re.escape(varname)), re.I)
-                        for j in range(idx, method_end + 1):
-                            if regex.search(lines[j]):
-                                hardened = True
-                                break
-                        if hardened:
-                            break
-                if not hardened:
-                    findings.append({
-                        "filepath": str(filepath),
-                        "filename": os.path.basename(filepath),
-                        "line_number": idx + 1,
-                        "vulnerable_code_line": text,
-                        "pattern_name": "Unhardened XML parser (method-scope)",
-                        "severity": "High"
-                    })
-                break
-        if matched_any:
-            continue
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+            lines = file.readlines()
+            for line_number, line in enumerate(lines, 1):
+                for pattern in xxe_patterns:
+                    if re.search(pattern, line, re.IGNORECASE):
+                        findings.append({
+                            'Filepath': str(file_path),
+                            'Filename': os.path.basename(file_path),
+                            'Line Number': line_number,
+                            'Vulnerable Code Line': line.strip()
+                        })
+    except Exception as e:
+        print(f"Error reading {file_path}: {e}")
     return findings
 
-def scan_directory(root_path):
+def scan_directory(directory):
+    """Scan all JSP files in directory and subdirectories for XXE vulnerabilities."""
     all_findings = []
-    for dirpath, _, filenames in os.walk(root_path):
-        for fname in filenames:
-            if os.path.splitext(fname)[1].lower() in EXTENSIONS:
-                fpath = Path(dirpath) / fname
-                all_findings.extend(scan_file(fpath))
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.jsp') or file.endswith('.xml'):
+                file_path = os.path.join(root, file)
+                findings = scan_file(file_path)
+                all_findings.extend(findings)
     return all_findings
 
-def save_to_excel(findings, outpath):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "XXE Findings"
-    headers = ["filepath", "filename", "line_number", "vulnerable_code_line", "pattern_name", "severity"]
-    ws.append(headers)
-    for r in findings:
-        ws.append([r["filepath"], r["filename"], r["line_number"], r["vulnerable_code_line"], r["pattern_name"], r["severity"]])
-    for row in ws.iter_rows(min_row=2, max_col=len(headers)):
-        severity = row[-1].value
-        if severity in SEVERITY_COLOR:
-            for cell in row:
-                cell.fill = SEVERITY_COLOR[severity]
-    for i, col in enumerate(headers, start=1):
-        max_len = max((len(str(cell.value)) if cell.value else 0) for cell in ws[get_column_letter(i)])
-        ws.column_dimensions[get_column_letter(i)].width = min(max_len + 2, 100)
-    wb.save(outpath)
+def save_to_excel(findings, output_file):
+    """Save findings to an Excel file in the current directory."""
+    if not findings:
+        print("No XXE vulnerabilities found.")
+        return
+    
+    df = pd.DataFrame(findings)
+    df.to_excel(output_file, index=False, engine='openpyxl')
+    print(f"Findings saved to {output_file}")
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python xxe_scanner_methodaware.py /path/to/code")
-        sys.exit(1)
-    root_dir = sys.argv[1]
-    # Set output file to the script's directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    out_file = os.path.join(script_dir, "xxe_scan_results.xlsx")
-    print(f"[+] Scanning: {root_dir}")
-    findings = scan_directory(root_dir)
-    print(f"[+] Total findings: {len(findings)}")
-    save_to_excel(findings, out_file)
-    print(f"[+] Saved to {out_file}")
+    # Get current directory as the root for scanning
+    directory = os.getcwd()
+    output_file = os.path.join(directory, 'xxe_vulnerabilities.xlsx')
+    
+    print(f"Scanning JSP files in {directory} and its subdirectories...")
+    
+    # Scan for vulnerabilities
+    findings = scan_directory(directory)
+    
+    # Save results to Excel
+    save_to_excel(findings, output_file)
 
 if __name__ == "__main__":
     main()
