@@ -3,7 +3,7 @@ import re
 import pandas as pd
 from pathlib import Path
 
-# Define regex patterns for potential XXE vulnerabilities in JSP files
+# Define regex patterns for potential XXE vulnerabilities
 xxe_patterns = [
     r'<!DOCTYPE\s+[^>]*\s*\[.*?!ENTITY\s+[^>]*>',  # DOCTYPE with ENTITY declaration
     r'<!ENTITY\s+[^>]*>',                          # ENTITY declaration
@@ -16,7 +16,7 @@ xxe_patterns = [
 ]
 
 def scan_file(file_path):
-    """Scan a single JSP file for XXE vulnerabilities and return findings."""
+    """Scan a single file for XXE vulnerabilities and return findings."""
     findings = []
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
@@ -35,11 +35,11 @@ def scan_file(file_path):
     return findings
 
 def scan_directory(directory):
-    """Scan all JSP files in directory and subdirectories for XXE vulnerabilities."""
+    """Scan all JSP, Java, and XML files in directory and subdirectories for XXE vulnerabilities."""
     all_findings = []
     for root, _, files in os.walk(directory):
         for file in files:
-            if file.endswith('.jsp') or file.endswith('.xml'):
+            if file.endswith(('.jsp', '.java', '.xml')):  # Include .java files
                 file_path = os.path.join(root, file)
                 findings = scan_file(file_path)
                 all_findings.extend(findings)
@@ -60,7 +60,7 @@ def main():
     directory = os.getcwd()
     output_file = os.path.join(directory, 'xxe_vulnerabilities.xlsx')
     
-    print(f"Scanning JSP files in {directory} and its subdirectories...")
+    print(f"Scanning JSP, Java, and XML files in {directory} and its subdirectories...")
     
     # Scan for vulnerabilities
     findings = scan_directory(directory)
