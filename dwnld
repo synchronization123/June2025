@@ -20,7 +20,7 @@
             background-color: #fff;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px-техник 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
         .input-group {
@@ -28,7 +28,7 @@
         }
         label {
             display: inline-block;
-            width: 150px;
+            width: 180px;
             font-weight: bold;
         }
         input {
@@ -131,9 +131,15 @@
             return isNaN(date) ? null : date;
         }
 
+        function formatDateToYMD(date) {
+            if (!date) return "";
+            return date.toISOString().split("T")[0]; // Ensures YYYY-MM-DD
+        }
+
         async function fetchEngagements(startDate, endDate) {
             const url = `${apiUrl}engagements/`;
             const params = new URLSearchParams({
+                tags: "patches",
                 created__gte: startDate.toISOString(),
                 created__lte: endDate.toISOString(),
                 offset: 0,
@@ -181,13 +187,14 @@
 
                 data.push({
                     Patch: engagement.name || "",
-                    "Creation Date": created ? created.toISOString().split("T")[0] : "",
+                    "Creation Date": formatDateToYMD(created),
                     Status: "Completed",
                     "Review Status": reviewStatus,
-                    "Completion Date": updated ? updated.toISOString().split("T")[0] : "",
+                    "Completion Date": formatDateToYMD(updated),
                     "Timeline (Days)": timelineDays,
                     IR: engagement.version || "",
-                    "No. of Jiras": 0 // Placeholder, updated asynchronously
+                    "No. of Jiras": 0, // Placeholder
+                    engagementId: engagement.id // Store ID for JIRA count
                 });
             }
             return data;
@@ -195,8 +202,9 @@
 
         async function populateJiraCounts(data) {
             for (const row of data) {
-                const engagementId = data.indexOf(row) + 1; // Simplified; assumes ID from index or fetch actual ID
-                row["No. of Jiras"] = await fetchJiraCount(engagementId);
+                if (row.engagementId) {
+                    row["No. of Jiras"] = await fetchJiraCount(row.engagementId);
+                }
             }
         }
 
@@ -221,7 +229,9 @@
         }
 
         function exportToExcel(data, date1, date2) {
-            const ws = XLSX.utils.json_to_sheet(data);
+            // Remove engagementId from export
+            const exportData = data.map(({ engagementId, ...rest }) => rest);
+            const ws = XLSX.utils.json_to_sheet(exportData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Patches");
             const filename = `patches_completed_${date1}-${date2}.xlsx`;
@@ -251,12 +261,12 @@
 
             const engagements = await fetchEngagements(date1, date2);
             if (!engagements.length) {
-                showMessage("No engagements found for the selected date range.", "info");
+                showMessage("No engagements found for the selected date range with tag 'patches'.", "info");
                 return;
             }
 
             const data = processEngagements(engagements);
-            await populateJiraCounts(data); // Fetch JIRA counts
+            await populateJiraCounts(data);
             displayInTable(data);
             exportToExcel(data, date1Str, date2Str);
         }
