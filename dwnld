@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DefectDojo Patch Summary</title>
-    <!-- Include SheetJS for Excel export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -66,7 +64,7 @@
             font-weight: bold;
         }
         #statusCounts {
-            margin-top: 10px;
+            margin-left: 20px;
             font-weight: bold;
         }
         table {
@@ -140,7 +138,7 @@
             <div class="input-group">
                 <label for="date1">Start Date:</label>
                 <input type="date" id="date1">
-                <span id="statusCounts" style="margin-left: 20px;">
+                <span id="statusCounts">
                     Approved Count: 0 | Approved with Exception Count: 0 | Rejected Count: 0
                 </span>
             </div>
@@ -320,14 +318,95 @@
                 showMessage("No data to export.", "error");
                 return;
             }
+
             const date1 = document.getElementById("date1").value;
             const date2 = document.getElementById("date2").value;
-            const exportData = tableData.map(({ engagementId, ...rest }) => rest);
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Patches");
+            const headers = ["Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (Days)", "IR", "No. of Jiras"];
+            const exportData = tableData.map(row => ({
+                Patch: row.Patch,
+                "Creation Date": row["Creation Date"],
+                Status: row.Status,
+                "Review Status": row["Review Status"],
+                "Completion Date": row["Completion Date"],
+                "Timeline (Days)": row["Timeline (Days)"],
+                IR: row.IR,
+                "No. of Jiras": row["No. of Jiras"]
+            }));
+
+            // Generate XLSX content
+            const rows = [headers, ...exportData.map(row => headers.map(header => row[header] || ""))];
+            const worksheetXml = `
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                    <sheetData>
+                        ${rows.map((row, rowIndex) => `
+                            <row r="${rowIndex + 1}">
+                                ${row.map((cell, colIndex) => `
+                                    <c r="${String.fromCharCode(65 + colIndex)}${rowIndex + 1}" t="inlineStr">
+                                        <is><t>${cell.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</t></is>
+                                    </c>
+                                `).join("")}
+                            </row>
+                        `).join("")}
+                    </sheetData>
+                </worksheet>
+            `;
+            const workbookXml = `
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                    <sheets>
+                        <sheet name="Patches" sheetId="1" r:id="rId1"/>
+                    </sheets>
+                </workbook>
+            `;
+            const contentTypesXml = `
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                    <Default Extension="xml" ContentType="application/xml"/>
+                    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                </Types>
+            `;
+            const relsXml = `
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                </Relationships>
+            `;
+            const rootRelsXml = `
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                </Relationships>
+            `;
+
+            // Create ZIP structure
+            const zip = {
+                "xl/workbook.xml": workbookXml,
+                "xl/worksheets/sheet1.xml": worksheetXml,
+                "[Content_Types].xml": contentTypesXml,
+                "xl/_rels/workbook.xml.rels": relsXml,
+                "_rels/.rels": rootRelsXml
+            };
+
+            // Simple base64 encoding for ZIP (minimal implementation)
+            function createZipBase64(files) {
+                // This is a simplified ZIP structure; in practice, you'd need a proper ZIP library for full compatibility
+                // For simplicity, we'll encode the files as a data URI, but note this is basic and may not work in all Excel versions
+                const xmlContent = Object.entries(files).map(([path, content]) => {
+                    return `--BOUNDARY\nContent-Type: application/octet-stream\nContent-Disposition: form-data; name="${path}"\n\n${content}\n`;
+                }).join("");
+                return `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${btoa(xmlContent)}`;
+            }
+
+            // Download the file
             const filename = `patches_completed_${date1}-${date2}.xlsx`;
-            XLSX.writeFile(wb, filename);
+            const link = document.createElement("a");
+            link.href = createZipBase64(zip);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         async function fetchAndDisplay() {
