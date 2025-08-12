@@ -35,39 +35,41 @@ def main():
 
     engagements = fetch_engagements(session)
 
-    # Filter engagements by date range
     filtered = []
     for e in engagements:
-        created_date_str = e.get("created", "")[:10]  # Only YYYY-MM-DD
-        if not created_date_str:
+        created_raw = e.get("created")
+        if not created_raw:  # skip if no date
             continue
-        if date1 <= created_date_str <= date2:
-            # Determine Review Status from commit_hash
+
+        # Ensure string for slicing
+        created_str = str(created_raw)[:10]
+        if date1 <= created_str <= date2:
             commit_hash = e.get("commit_hash", "").strip()
             if not commit_hash or commit_hash.lower() == "not started":
                 review_status = "Approved"
             else:
-                review_status = commit_hash  # Already one of Approved, Approved with Exception, Rejected
+                review_status = commit_hash
 
-            # Dates & timeline
-            created_dt = parser.isoparse(e.get("created"))
-            updated_dt = parser.isoparse(e.get("updated"))
-            timeline_days = (updated_dt - created_dt).days
+            try:
+                created_dt = parser.isoparse(str(e.get("created")))
+                updated_dt = parser.isoparse(str(e.get("updated")))
+                timeline_days = (updated_dt - created_dt).days
+            except Exception:
+                timeline_days = ""
 
             jira_count = fetch_patch_jira_count(session, e["id"])
 
             filtered.append({
                 "Patch": e.get("name", ""),
-                "Creation Date": created_date_str,
+                "Creation Date": created_str,
                 "Status": "Completed",
                 "Review Status": review_status,
-                "Completion Date": e.get("updated", "")[:10],
+                "Completion Date": str(e.get("updated", ""))[:10],
                 "Timeline (days)": timeline_days,
                 "IR": e.get("version", ""),
                 "No. of Jiras": jira_count
             })
 
-    # Save to Excel
     df = pd.DataFrame(filtered)
     file_name = f"patches_completed_{date1}-{date2}.xlsx"
     df.to_excel(file_name, index=False)
