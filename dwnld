@@ -1,279 +1,168 @@
-"""
-patch_summary.pyw
-
-Fetches patch summary data from a DefectDojo instance (v2 API) for two given creation dates.
-Displays the results in a modern GUI table and allows exporting to Excel in the current directory.
-"""
-
-import os
-import threading
-import datetime as dt
 import tkinter as tk
 from tkinter import ttk, messagebox
-
 import requests
+from datetime import datetime
 import pandas as pd
 
-# ---------- CONFIG ----------
+# ===== CONFIG =====
 API_TOKEN = "hdjdjdjdjdjd"
-DJ_HOST = "https://demo.defectdojo.org"  # No trailing slash
-PAGE_SIZE = 200
-# ----------------------------
+BASE_URL = "https://demo.defectdojo.org"
+HEADERS = {"Authorization": f"Token {API_TOKEN}"}
+LIMIT = 1000
 
-HEADERS = {"Authorization": f"Token {API_TOKEN}", "Accept": "application/json"}
-CWD = os.getcwd()
+# ===== API FUNCTIONS =====
+def fetch_engagements(session, log_fn):
+    url = f"{BASE_URL}/api/v2/engagements/"
+    params = {"limit": LIMIT, "offset": 0}
+    log_fn(f"Fetching engagements...")
+    r = session.get(url, params=params)
+    if r.status_code != 200:
+        raise RuntimeError(f"Failed to fetch engagements: {r.status_code} {r.text}")
+    return r.json().get("results", [])
 
+def fetch_findings_for_date(session, date_str, log_fn):
+    url = f"{BASE_URL}/api/v2/findings/"
+    params = {
+        "created": date_str,
+        "limit": LIMIT,
+        "offset": 0
+    }
+    log_fn(f"Fetching findings for {date_str}...")
+    r = session.get(url, params=params)
+    if r.status_code != 200:
+        raise RuntimeError(f"Failed to fetch findings: {r.status_code} {r.text}")
+    return r.json().get("results", [])
 
-def path_in_cwd(fname):
-    """Ensure the file is saved in current working directory."""
-    return os.path.join(CWD, os.path.basename(fname))
+def fetch_patch_jira_count(session, engagement_id):
+    url = f"{BASE_URL}/api/v2/tests/"
+    params = {"engagement": engagement_id, "tags": "patch_jira", "limit": LIMIT, "offset": 0}
+    r = session.get(url, params=params)
+    if r.status_code != 200:
+        return 0
+    return len(r.json().get("results", []))
 
-
-# ---------- API helpers ----------
-def paged_get(url, params=None, session=None, log_fn=None):
-    """
-    Correct pagination for DRF API with limit/offset.
-    Handles server-provided full URLs in 'next' without adding params again.
-    """
-    if session is None:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-    items = []
-    params = dict(params) if params else {}
-    params.setdefault("limit", PAGE_SIZE)
-    params.setdefault("offset", 0)
-
-    next_url = url
-    while next_url:
-        if log_fn:
-            log_fn(f"GET {next_url} params={params if next_url == url else '(server-provided)'}")
-        if next_url == url:
-            resp = session.get(next_url, params=params)
-        else:
-            resp = session.get(next_url)  # already has params from server
-        if resp.status_code != 200:
-            raise RuntimeError(f"API error {resp.status_code}: {resp.text}")
-        j = resp.json()
-        if isinstance(j, dict) and "results" in j:
-            items.extend(j["results"])
-            next_url = j.get("next")
-        elif isinstance(j, list):
-            items.extend(j)
-            next_url = None
-        else:
-            items.append(j)
-            next_url = None
-    return items
-
-
-def fetch_engagements(log_fn=None):
-    url = f"{DJ_HOST}/api/v2/engagements/"
-    session = requests.Session()
-    session.headers.update(HEADERS)
-    return paged_get(url, params={"limit": PAGE_SIZE, "offset": 0}, session=session, log_fn=log_fn)
-
-
-def count_patch_jiras_for_engagement(engagement_id, session=None, log_fn=None):
-    if session is None:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-    url = f"{DJ_HOST}/api/v2/tests/"
-    params = {"engagement": engagement_id, "tags": "patch_jira", "limit": PAGE_SIZE, "offset": 0}
-    items = paged_get(url, params=params, session=session, log_fn=log_fn)
-    return len(items)
-
-
-# ---------- Date helpers ----------
-def parse_date_str(s):
-    return dt.datetime.strptime(s.strip(), "%Y-%m-%d").date()
-
-
-def date_midnight_range_for_date(d):
-    start = dt.datetime.combine(d, dt.time.min)
-    end = dt.datetime.combine(d + dt.timedelta(days=1), dt.time.min)
-    return start, end
-
-
-def within_midnight_range(created_str, start_dt, end_dt):
+# ===== MAIN LOGIC =====
+def process_dates(date1, date2, log_fn, table, root):
     try:
-        created_dt = dt.datetime.fromisoformat(created_str.replace("Z", "+00:00")).replace(tzinfo=None)
-    except Exception:
-        created_dt = dt.datetime.strptime(created_str[:10], "%Y-%m-%d")
-    return start_dt <= created_dt < end_dt
-
-
-# ---------- GUI ----------
-class PatchSummaryApp:
-    def __init__(self, root):
-        self.root = root
-        root.title("Patch Summary - DefectDojo")
-        try:
-            import ttkbootstrap as tb
-            tb.Style("flatly")
-        except Exception:
-            pass
-
-        frm_top = ttk.Frame(root, padding=(10, 8))
-        frm_top.pack(fill="x")
-        frm_buttons = ttk.Frame(root, padding=(10, 6))
-        frm_buttons.pack(fill="x")
-        frm_table = ttk.Frame(root, padding=(10, 6))
-        frm_table.pack(fill="both", expand=True)
-        frm_console = ttk.Frame(root, padding=(10, 6))
-        frm_console.pack(fill="both", expand=False)
-
-        ttk.Label(frm_top, text="Date 1 (YYYY-MM-DD):").grid(row=0, column=0, sticky="w")
-        ttk.Label(frm_top, text="Date 2 (YYYY-MM-DD):").grid(row=0, column=2, sticky="w")
-
-        self.date1_var = tk.StringVar()
-        self.date2_var = tk.StringVar()
-        try:
-            from tkcalendar import DateEntry
-            DateEntry(frm_top, width=12, date_pattern="yyyy-mm-dd", textvariable=self.date1_var).grid(row=0, column=1, padx=(2, 20))
-            DateEntry(frm_top, width=12, date_pattern="yyyy-mm-dd", textvariable=self.date2_var).grid(row=0, column=3, padx=(2, 10))
-        except Exception:
-            ttk.Entry(frm_top, width=14, textvariable=self.date1_var).grid(row=0, column=1, padx=(2, 20))
-            ttk.Entry(frm_top, width=14, textvariable=self.date2_var).grid(row=0, column=3, padx=(2, 10))
-
-        ttk.Button(frm_buttons, text="Fetch", command=self.on_fetch).pack(side="left", padx=6, pady=6)
-        ttk.Button(frm_buttons, text="Export to Excel", command=self.on_export).pack(side="left", padx=6, pady=6)
-        ttk.Button(frm_buttons, text="Clear", command=self.on_clear).pack(side="left", padx=6, pady=6)
-        ttk.Button(frm_buttons, text="Quit", command=root.quit).pack(side="right", padx=6, pady=6)
-
-        columns = ("Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (day(s))", "IR", "No. Of Jiras")
-        self.tree = ttk.Treeview(frm_table, columns=columns, show="headings", selectmode="browse")
-        for col in columns:
-            self.tree.heading(col, text=col)
-            if col == "Patch":
-                self.tree.column(col, width=220, anchor="w")
-            elif col == "Review Status":
-                self.tree.column(col, width=140, anchor="center")
-            else:
-                self.tree.column(col, width=110, anchor="center")
-        self.tree.pack(fill="both", expand=True, side="left")
-        vsb = ttk.Scrollbar(frm_table, orient="vertical", command=self.tree.yview)
-        vsb.pack(side="right", fill="y")
-        self.tree.configure(yscrollcommand=vsb.set)
-
-        ttk.Label(frm_console, text="Console / Progress:").pack(anchor="w")
-        self.txt_console = tk.Text(frm_console, height=8, wrap="word", state="disabled")
-        self.txt_console.pack(fill="both", expand=True)
-
-        self.summary_df = pd.DataFrame(columns=columns)
-
-    def log(self, msg):
-        ts = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        line = f"[{ts}] {msg}\n"
-        self.txt_console.configure(state="normal")
-        self.txt_console.insert("end", line)
-        self.txt_console.see("end")
-        self.txt_console.configure(state="disabled")
-
-    def clear_tree(self):
-        for r in self.tree.get_children():
-            self.tree.delete(r)
-
-    def populate_tree_from_df(self):
-        self.clear_tree()
-        for _, row in self.summary_df.iterrows():
-            vals = ["" if pd.isna(v) else str(v) for v in row.tolist()]
-            self.tree.insert("", "end", values=vals)
-
-    def on_clear(self):
-        self.summary_df = self.summary_df.iloc[0:0]
-        self.populate_tree_from_df()
-        self.log("Cleared table and data.")
-
-    def on_export(self):
-        if self.summary_df.empty:
-            messagebox.showinfo("Export", "No data to export.")
-            return
-        try:
-            parse_date_str(self.date1_var.get())
-            parse_date_str(self.date2_var.get())
-        except Exception as e:
-            messagebox.showerror("Date error", f"Invalid date(s): {e}")
-            return
-        filename = f"patches_completed_{self.date1_var.get()}_{self.date2_var.get()}.xlsx"
-        path = path_in_cwd(filename)
-        self.summary_df.to_excel(path, index=False, engine="openpyxl")
-        self.log(f"Excel exported: {path}")
-        messagebox.showinfo("Export", f"Exported to {path}")
-
-    def on_fetch(self):
-        try:
-            d1 = parse_date_str(self.date1_var.get())
-            d2 = parse_date_str(self.date2_var.get())
-        except Exception as e:
-            messagebox.showerror("Date error", str(e))
-            return
-        threading.Thread(target=self._fetch_thread, args=(d1, d2), daemon=True).start()
-
-    def _fetch_thread(self, date1, date2):
-        start1, end1 = date_midnight_range_for_date(date1)
-        start2, end2 = date_midnight_range_for_date(date2)
-        self.log(f"Fetching engagements for {date1} and {date2}...")
-        try:
-            engagements = fetch_engagements(log_fn=self.log)
-        except Exception as e:
-            self.log(f"Failed to fetch engagements: {e}")
-            messagebox.showerror("API error", str(e))
-            return
-        selected = [eng for eng in engagements if eng.get("created") and
-                    (within_midnight_range(eng["created"], start1, end1) or
-                     within_midnight_range(eng["created"], start2, end2))]
-        self.log(f"{len(selected)} engagements matched the dates.")
-
         session = requests.Session()
         session.headers.update(HEADERS)
+
+        engagements = fetch_engagements(session, log_fn)
+        findings_all = []
+        for date_str in [date1, date2]:
+            findings = fetch_findings_for_date(session, date_str, log_fn)
+            findings_all.extend(findings)
+
         rows = []
-        for idx, eng in enumerate(selected, start=1):
-            self.log(f"Processing {idx}/{len(selected)}: {eng.get('name')}")
-            name = eng.get("name") or ""
-            created = eng.get("created") or ""
-            updated = eng.get("updated") or ""
-            commit_hash = eng.get("commit_hash") or ""
-            version = eng.get("version") or ""
-            status = "Completed"
-            if not commit_hash.strip() or commit_hash.strip().lower() == "not started":
+        for f in findings_all:
+            name = f.get("name", "")
+            created = f.get("created", "")[:10]
+            updated = f.get("updated", "")[:10]
+            commit_hash = f.get("commit_hash", "")
+            version = f.get("version", "")
+            engagement_id = f.get("engagement")
+            jiras_count = fetch_patch_jira_count(session, engagement_id)
+
+            review_status = commit_hash if commit_hash else "Approved"
+            if review_status.strip().lower() == "not started" or not review_status.strip():
                 review_status = "Approved"
-            else:
-                review_status = commit_hash
-            creation_date = created[:10] if created else ""
-            completion_date = updated[:10] if updated else ""
-            try:
-                dt_created = dt.datetime.fromisoformat(created.replace("Z", "+00:00")).replace(tzinfo=None)
-                dt_updated = dt.datetime.fromisoformat(updated.replace("Z", "+00:00")).replace(tzinfo=None)
-                timeline = max(0, (dt_updated - dt_created).days)
-            except Exception:
-                timeline = ""
-            try:
-                jira_count = count_patch_jiras_for_engagement(eng.get("id"), session=session, log_fn=self.log)
-            except Exception as e:
-                self.log(f"JIRA count failed: {e}")
-                jira_count = "ERR"
-            rows.append({
-                "Patch": name,
-                "Creation Date": creation_date,
-                "Status": status,
-                "Review Status": review_status,
-                "Completion Date": completion_date,
-                "Timeline (day(s))": timeline,
-                "IR": version,
-                "No. Of Jiras": jira_count,
-            })
 
-        self.summary_df = pd.DataFrame(rows)
-        self.root.after(0, self.populate_tree_from_df)
-        self.log("Fetch complete.")
+            created_dt = datetime.strptime(created, "%Y-%m-%d")
+            updated_dt = datetime.strptime(updated, "%Y-%m-%d") if updated else created_dt
+            timeline_days = (updated_dt - created_dt).days
 
+            rows.append([
+                name,
+                created,
+                "Completed",
+                review_status,
+                updated,
+                f"{timeline_days} day(s)",
+                version,
+                jiras_count
+            ])
 
-def main():
+        df = pd.DataFrame(rows, columns=[
+            "Patch",
+            "Creation Date",
+            "Status",
+            "Review Status",
+            "Completion Date",
+            "Timeline",
+            "IR",
+            "No. Of Jiras"
+        ])
+
+        filename = f"patches_completed_{date1}-{date2}.xlsx"
+        df.to_excel(filename, index=False)
+        log_fn(f"Data saved to {filename}")
+
+        # Update table
+        for row in table.get_children():
+            table.delete(row)
+        for r in rows:
+            table.insert("", "end", values=r)
+
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+# ===== GUI =====
+def run_gui():
     root = tk.Tk()
+    root.title("DefectDojo Patch Summary")
     root.geometry("1000x600")
-    PatchSummaryApp(root)
+    root.configure(bg="#f7f9fc")
+
+    style = ttk.Style(root)
+    style.theme_use("clam")
+    style.configure("Treeview", rowheight=28, font=("Segoe UI", 10))
+    style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+    style.configure("TButton", font=("Segoe UI", 10), padding=6)
+    style.configure("TLabel", background="#f7f9fc", font=("Segoe UI", 10))
+
+    # Date inputs
+    frame_top = ttk.Frame(root)
+    frame_top.pack(pady=10)
+
+    ttk.Label(frame_top, text="Date 1 (YYYY-MM-DD):").grid(row=0, column=0, padx=5)
+    date1_var = tk.StringVar()
+    date1_entry = ttk.Entry(frame_top, textvariable=date1_var, width=12)
+    date1_entry.grid(row=0, column=1, padx=5)
+
+    ttk.Label(frame_top, text="Date 2 (YYYY-MM-DD):").grid(row=0, column=2, padx=5)
+    date2_var = tk.StringVar()
+    date2_entry = ttk.Entry(frame_top, textvariable=date2_var, width=12)
+    date2_entry.grid(row=0, column=3, padx=5)
+
+    # Buttons
+    frame_btn = ttk.Frame(root)
+    frame_btn.pack(pady=5)
+    def log_fn(msg):
+        console.insert("end", msg + "\n")
+        console.see("end")
+
+    btn_fetch = ttk.Button(
+        frame_btn,
+        text="Fetch Data",
+        command=lambda: process_dates(date1_var.get(), date2_var.get(), log_fn, table, root)
+    )
+    btn_fetch.pack()
+
+    # Table
+    columns = ["Patch", "Creation Date", "Status", "Review Status",
+               "Completion Date", "Timeline", "IR", "No. Of Jiras"]
+    table = ttk.Treeview(root, columns=columns, show="headings", height=10)
+    for col in columns:
+        table.heading(col, text=col)
+        table.column(col, anchor="center", width=120)
+    table.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # Console log
+    ttk.Label(root, text="Console Log:").pack(anchor="w", padx=10)
+    console = tk.Text(root, height=6, wrap="word", font=("Consolas", 9))
+    console.pack(fill="x", padx=10, pady=5)
+
     root.mainloop()
 
-
 if __name__ == "__main__":
-    main()
+    run_gui()
