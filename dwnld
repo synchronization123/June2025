@@ -234,6 +234,9 @@
             const endDateStr = formatDateToYMD(endDate);
             const data = [];
             for (const engagement of engagements) {
+                // Exclude engagements where status is not "Completed"
+                if (engagement.status !== "Completed") continue;
+
                 const created = engagement.created ? new Date(engagement.created) : null;
                 const createdStr = created ? formatDateToYMD(created) : "";
                 // Filter strictly by created date range
@@ -241,14 +244,9 @@
 
                 const updated = engagement.updated ? new Date(engagement.updated) : null;
                 let commitHash = engagement.commit_hash || "Not Started";
-                let reviewStatus;
-                if (engagement.status === "Completed" && (commitHash === "Not Started" || commitHash === "")) {
+                let reviewStatus = commitHash === "Not Started" || commitHash === "" ? "Approved" : commitHash;
+                if (!["Approved with Exception", "Rejected", "Approved"].includes(reviewStatus)) {
                     reviewStatus = "Approved";
-                } else {
-                    reviewStatus = commitHash;
-                    if (!["Approved with Exception", "Rejected", "Approved"].includes(reviewStatus)) {
-                        reviewStatus = "Approved";
-                    }
                 }
                 const timelineDays = created && updated ? Math.round((updated - created) / (1000 * 60 * 60 * 24)) : 0;
 
