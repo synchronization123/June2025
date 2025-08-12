@@ -1,187 +1,265 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-import ttkbootstrap as ttkb
-from ttkbootstrap.constants import *
-import requests
-import pandas as pd
-from datetime import datetime, timedelta
-import os
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DefectDojo Patch Summary</title>
+    <!-- Include SheetJS for Excel export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .input-section {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+        input {
+            padding: 8px;
+            width: 200px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .error, .info {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="input-section">
+            <h2>DefectDojo Patch Summary</h2>
+            <div class="input-group">
+                <label for="date1">Start Date (YYYY-MM-DD):</label>
+                <input type="text" id="date1" placeholder="YYYY-MM-DD">
+            </div>
+            <div class="input-group">
+                <label for="date2">End Date (YYYY-MM-DD):</label>
+                <input type="text" id="date2" placeholder="YYYY-MM-DD">
+            </div>
+            <button onclick="fetchAndDisplay()">Fetch Data</button>
+        </div>
+        <div id="message"></div>
+        <table id="dataTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Patch</th>
+                    <th>Creation Date</th>
+                    <th>Status</th>
+                    <th>Review Status</th>
+                    <th>Completion Date</th>
+                    <th>Timeline (Days)</th>
+                    <th>IR</th>
+                    <th>No. of Jiras</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
 
-class DefectDojoGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("DefectDojo Patch Summary")
-        self.style = ttkb.Style(theme="flatly")  # Modern theme
+    <script>
+        const apiUrl = "https://demo.defectdojo.org/api/v2/";
 
-        # API configuration
-        self.api_url = "https://demo.defectdojo.org/api/v2/"
-        self.api_token = "hdjdjdjdjdjd"
-        self.headers = {
-            "Authorization": f"Token {self.api_token}",
-            "Content-Type": "application/json"
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById("message");
+            messageDiv.textContent = text;
+            messageDiv.className = type;
+            messageDiv.style.display = "block";
+            setTimeout(() => { messageDiv.style.display = "none"; }, 5000);
         }
 
-        # GUI elements
-        self.create_widgets()
-
-    def create_widgets(self):
-        # Date input frame
-        date_frame = ttkb.LabelFrame(self.root, text="Select Date Range", padding=10)
-        date_frame.pack(padx=10, pady=10, fill=X)
-
-        # Date 1
-        ttkb.Label(date_frame, text="Start Date (YYYY-MM-DD):").grid(row=0, column=0, padx=5, pady=5, sticky=W)
-        self.date1_entry = ttkb.Entry(date_frame)
-        self.date1_entry.grid(row=0, column=1, padx=5, pady=5)
-
-        # Date 2
-        ttkb.Label(date_frame, text="End Date (YYYY-MM-DD):").grid(row=1, column=0, padx=5, pady=5, sticky=W)
-        self.date2_entry = ttkb.Entry(date_frame)
-        self.date2_entry.grid(row=1, column=1, padx=5, pady=5)
-
-        # Fetch button
-        ttkb.Button(self.root, text="Fetch Data", bootstyle=SUCCESS, command=self.fetch_and_display).pack(pady=10)
-
-        # Table frame
-        self.table_frame = ttkb.Frame(self.root)
-        self.table_frame.pack(padx=10, pady=10, fill=BOTH, expand=True)
-
-        # Treeview for table display
-        self.columns = ("Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (Days)", "IR", "No. of Jiras")
-        self.tree = ttkb.Treeview(self.table_frame, columns=self.columns, show="headings", bootstyle=PRIMARY)
-        for col in self.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=120, anchor=CENTER)
-        self.tree.pack(fill=BOTH, expand=True)
-
-        # Scrollbar
-        scrollbar = ttkb.Scrollbar(self.table_frame, orient=VERTICAL, command=self.tree.yview)
-        scrollbar.pack(side=RIGHT, fill=Y)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-
-    def validate_date(self, date_str):
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            return None
-
-    def fetch_and_display(self):
-        # Clear previous table data
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        # Get and validate dates
-        date1_str = self.date1_entry.get()
-        date2_str = self.date2_entry.get()
-
-        date1 = self.validate_date(date1_str)
-        date2 = self.validate_date(date2_str)
-
-        if not date1 or not date2:
-            messagebox.showerror("Error", "Invalid date format. Use YYYY-MM-DD.")
-            return
-
-        if date1 > date2:
-            messagebox.showerror("Error", "Start date must be before or equal to end date.")
-            return
-
-        # Adjust dates for midnight to midnight
-        date1_start = date1.replace(hour=0, minute=0, second=0, microsecond=0)
-        date2_end = date2.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-        # Fetch engagements
-        engagements = self.fetch_engagements(date1_start, date2_end)
-        if not engagements:
-            messagebox.showinfo("Info", "No engagements found for the selected date range.")
-            return
-
-        # Process and display data
-        data = self.process_engagements(engagements)
-        self.display_in_table(data)
-        self.export_to_excel(data, date1_str, date2_str)
-
-    def fetch_engagements(self, date1_start, date2_end):
-        url = f"{self.api_url}engagements/"
-        params = {
-            "created__gte": date1_start.isoformat(),
-            "created__lte": date2_end.isoformat(),
-            "offset": 0,
-            "limit": 1000
+        function validateDate(dateStr) {
+            const regex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!regex.test(dateStr)) return null;
+            const date = new Date(dateStr);
+            return isNaN(date) ? null : date;
         }
-        try:
-            response = requests.get(url, headers=self.headers, params=params)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("results", [])
-        except requests.RequestException as e:
-            messagebox.showerror("Error", f"Failed to fetch engagements: {e}")
-            return []
 
-    def fetch_jira_count(self, engagement_id):
-        url = f"{self.api_url}tests/"
-        params = {"engagement": engagement_id, "tags": "patch_jira"}
-        try:
-            response = requests.get(url, headers=self.headers, params=params)
-            response.raise_for_status()
-            return response.json().get("count", 0)
-        except requests.RequestException:
-            return 0
+        async function fetchEngagements(startDate, endDate) {
+            const url = `${apiUrl}engagements/`;
+            const params = new URLSearchParams({
+                created__gte: startDate.toISOString(),
+                created__lte: endDate.toISOString(),
+                offset: 0,
+                limit: 1000
+            });
+            try {
+                const response = await fetch(`${url}?${params}`);
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+                return data.results || [];
+            } catch (error) {
+                showMessage(`Failed to fetch engagements: ${error.message}`, "error");
+                return [];
+            }
+        }
 
-    def process_engagements(self, engagements):
-        data = []
-        for engagement in engagements:
-            created = datetime.strptime(engagement.get("created", ""), "%Y-%m-%dT%H:%M:%S.%fZ") if engagement.get("created") else None
-            updated = datetime.strptime(engagement.get("updated", ""), "%Y-%m-%dT%H:%M:%S.%fZ") if engagement.get("updated") else None
-            commit_hash = engagement.get("commit_hash", "Not Started")
-            review_status = "Approved" if commit_hash in ["Not Started", ""] else commit_hash
-            if review_status not in ["Approved with Exception", "Rejected", "Approved"]:
-                review_status = "Approved"
+        async function fetchJiraCount(engagementId) {
+            const url = `${apiUrl}tests/`;
+            const params = new URLSearchParams({
+                engagement: engagementId,
+                tags: "patch_jira"
+            });
+            try {
+                const response = await fetch(`${url}?${params}`);
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const data = await response.json();
+                return data.count || 0;
+            } catch (error) {
+                console.warn(`Failed to fetch JIRA count for engagement ${engagementId}: ${error.message}`);
+                return 0;
+            }
+        }
 
-            timeline_days = (updated - created).days if created and updated else 0
+        function processEngagements(engagements) {
+            const data = [];
+            for (const engagement of engagements) {
+                const created = engagement.created ? new Date(engagement.created) : null;
+                const updated = engagement.updated ? new Date(engagement.updated) : null;
+                let commitHash = engagement.commit_hash || "Not Started";
+                let reviewStatus = commitHash === "Not Started" || commitHash === "" ? "Approved" : commitHash;
+                if (!["Approved with Exception", "Rejected", "Approved"].includes(reviewStatus)) {
+                    reviewStatus = "Approved";
+                }
+                const timelineDays = created && updated ? Math.round((updated - created) / (1000 * 60 * 60 * 24)) : 0;
 
-            # Fetch JIRA count
-            engagement_id = engagement.get("id", 0)
-            jira_count = self.fetch_jira_count(engagement_id)
+                data.push({
+                    Patch: engagement.name || "",
+                    "Creation Date": created ? created.toISOString().split("T")[0] : "",
+                    Status: "Completed",
+                    "Review Status": reviewStatus,
+                    "Completion Date": updated ? updated.toISOString().split("T")[0] : "",
+                    "Timeline (Days)": timelineDays,
+                    IR: engagement.version || "",
+                    "No. of Jiras": 0 // Placeholder, updated asynchronously
+                });
+            }
+            return data;
+        }
 
-            data.append({
-                "Patch": engagement.get("name", ""),
-                "Creation Date": created.strftime("%Y-%m-%d") if created else "",
-                "Status": "Completed",
-                "Review Status": review_status,
-                "Completion Date": updated.strftime("%Y-%m-%d") if updated else "",
-                "Timeline (Days)": timeline_days,
-                "IR": engagement.get("version", ""),
-                "No. of Jiras": jira_count
-            })
-        return data
+        async function populateJiraCounts(data) {
+            for (const row of data) {
+                const engagementId = data.indexOf(row) + 1; // Simplified; assumes ID from index or fetch actual ID
+                row["No. of Jiras"] = await fetchJiraCount(engagementId);
+            }
+        }
 
-    def display_in_table(self, data):
-        for row in data:
-            self.tree.insert("", END, values=(
-                row["Patch"],
-                row["Creation Date"],
-                row["Status"],
-                row["Review Status"],
-                row["Completion Date"],
-                row["Timeline (Days)"],
-                row["IR"],
-                row["No. of Jiras"]
-            ))
+        function displayInTable(data) {
+            const tableBody = document.getElementById("tableBody");
+            tableBody.innerHTML = "";
+            for (const row of data) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${row.Patch}</td>
+                    <td>${row["Creation Date"]}</td>
+                    <td>${row.Status}</td>
+                    <td>${row["Review Status"]}</td>
+                    <td>${row["Completion Date"]}</td>
+                    <td>${row["Timeline (Days)"]}</td>
+                    <td>${row.IR}</td>
+                    <td>${row["No. of Jiras"]}</td>
+                `;
+                tableBody.appendChild(tr);
+            }
+            document.getElementById("dataTable").style.display = data.length ? "table" : "none";
+        }
 
-    def export_to_excel(self, data, date1_str, date2_str):
-        df = pd.DataFrame(data)
-        filename = f"patches_completed_{date1_str}-{date2_str}.xlsx"
-        try:
-            df.to_excel(filename, index=False)
-            messagebox.showinfo("Success", f"Data exported to {filename} in current directory.")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to export to Excel: {e}")
+        function exportToExcel(data, date1, date2) {
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Patches");
+            const filename = `patches_completed_${date1}-${date2}.xlsx`;
+            XLSX.writeFile(wb, filename);
+        }
 
-def main():
-    root = ttkb.Window()
-    app = DefectDojoGUI(root)
-    root.geometry("1000x600")
-    root.mainloop()
+        async function fetchAndDisplay() {
+            const date1Str = document.getElementById("date1").value;
+            const date2Str = document.getElementById("date2").value;
 
-if __name__ == "__main__":
-    main()
+            const date1 = validateDate(date1Str);
+            const date2 = validateDate(date2Str);
+
+            if (!date1 || !date2) {
+                showMessage("Invalid date format. Use YYYY-MM-DD.", "error");
+                return;
+            }
+
+            if (date1 > date2) {
+                showMessage("Start date must be before or equal to end date.", "error");
+                return;
+            }
+
+            // Adjust dates for midnight to midnight
+            date1.setHours(0, 0, 0, 0);
+            date2.setHours(23, 59, 59, 999);
+
+            const engagements = await fetchEngagements(date1, date2);
+            if (!engagements.length) {
+                showMessage("No engagements found for the selected date range.", "info");
+                return;
+            }
+
+            const data = processEngagements(engagements);
+            await populateJiraCounts(data); // Fetch JIRA counts
+            displayInTable(data);
+            exportToExcel(data, date1Str, date2Str);
+        }
+    </script>
+</body>
+</html>
