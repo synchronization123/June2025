@@ -25,6 +25,8 @@
         }
         .input-group {
             margin-bottom: 15px;
+            display: flex;
+            align-items: center;
         }
         label {
             display: inline-block;
@@ -60,6 +62,10 @@
             cursor: not-allowed;
         }
         #totalCount {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        #statusCounts {
             margin-top: 10px;
             font-weight: bold;
         }
@@ -134,6 +140,9 @@
             <div class="input-group">
                 <label for="date1">Start Date:</label>
                 <input type="date" id="date1">
+                <span id="statusCounts" style="margin-left: 20px;">
+                    Approved Count: 0 | Approved with Exception Count: 0 | Rejected Count: 0
+                </span>
             </div>
             <div class="input-group">
                 <label for="date2">End Date:</label>
@@ -297,6 +306,13 @@
             }
             document.getElementById("dataTable").style.display = data.length ? "table" : "none";
             document.getElementById("totalCount").textContent = `Total: ${data.length}`;
+
+            // Update status counts
+            const approvedCount = data.filter(row => row["Review Status"] === "Approved").length;
+            const approvedWithExceptionCount = data.filter(row => row["Review Status"] === "Approved with Exception").length;
+            const rejectedCount = data.filter(row => row["Review Status"] === "Rejected").length;
+            document.getElementById("statusCounts").textContent = 
+                `Approved Count: ${approvedCount} | Approved with Exception Count: ${approvedWithExceptionCount} | Rejected Count: ${rejectedCount}`;
         }
 
         function exportToExcel() {
@@ -309,4 +325,50 @@
             const exportData = tableData.map(({ engagementId, ...rest }) => rest);
             const ws = XLSX.utils.json_to_sheet(exportData);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet
+            XLSX.utils.book_append_sheet(wb, ws, "Patches");
+            const filename = `patches_completed_${date1}-${date2}.xlsx`;
+            XLSX.writeFile(wb, filename);
+        }
+
+        async function fetchAndDisplay() {
+            const date1Str = document.getElementById("date1").value;
+            const date2Str = document.getElementById("date2").value;
+
+            const date1 = validateDate(date1Str);
+            const date2 = validateDate(date2Str);
+
+            if (!date1 || !date2) {
+                showMessage("Invalid date format. Use YYYY-MM-DD.", "error");
+                return;
+            }
+
+            if (date1 > date2) {
+                showMessage("Start date must be before or equal to end date.", "error");
+                return;
+            }
+
+            showLoadingModal(true);
+            document.getElementById("exportButton").disabled = true;
+            document.getElementById("totalCount").textContent = "Total: 0";
+            document.getElementById("statusCounts").textContent = "Approved Count: 0 | Approved with Exception Count: 0 | Rejected Count: 0";
+
+            // Adjust dates for midnight to midnight (inclusive)
+            date1.setHours(0, 0, 0, 0);
+            date2.setHours(23, 59, 59, 999);
+
+            const engagements = await fetchEngagements(date1, date2);
+            if (!engagements.length) {
+                showLoadingModal(false);
+                showMessage("No engagements found for the selected date range with tag 'patches' and status 'Completed'.", "info");
+                return;
+            }
+
+            tableData = processEngagements(engagements, date1, date2);
+            await populateJiraCounts(tableData);
+            displayInTable(tableData);
+            showLoadingModal(false);
+            document.getElementById("exportButton").disabled = !tableData.length;
+        }
+    </script>
+</body>
+</html>
