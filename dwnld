@@ -1,79 +1,192 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import ttkbootstrap as ttkb
+from ttkbootstrap.constants import *
 import requests
 import pandas as pd
-from datetime import datetime
-from dateutil import parser
+from datetime import datetime, timedelta
+import os
 
-# ---------------- CONFIG ---------------- #
-API_TOKEN = "hdjdjdjdjdjd"
-BASE_URL = "https://demo.defectdojo.org"
-LIMIT = 1000
-# ----------------------------------------- #
+class DefectDojoGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("DefectDojo Patch Summary")
+        self.style = ttkb.Style(theme="flatly")  # Modern theme
 
-def fetch_engagements(session):
-    url = f"{BASE_URL}/api/v2/engagements/"
-    params = {"limit": LIMIT}
-    r = session.get(url, params=params)
-    if r.status_code != 200:
-        raise RuntimeError(f"Failed to fetch engagements: {r.status_code} {r.text}")
-    return r.json().get("results", [])
+        # API configuration
+        self.api_url = "https://demo.defectdojo.org/api/v2/"
+        self.api_token = "hdjdjdjdjdjd"
+        self.headers = {
+            "Authorization": f"Token {self.api_token}",
+            "Content-Type": "application/json"
+        }
 
-def fetch_patch_jira_count(session, engagement_id):
-    url = f"{BASE_URL}/api/v2/tests/"
-    params = {"engagement": engagement_id, "tags": "patch_jira"}
-    r = session.get(url, params=params)
-    if r.status_code != 200:
-        print(f"[WARN] Failed to fetch Jira count for engagement {engagement_id}: {r.status_code}")
-        return 0
-    return len(r.json().get("results", []))
+        # GUI elements
+        self.create_widgets()
 
-def main():
-    date1 = input("Enter start date (YYYY-MM-DD): ").strip()
-    date2 = input("Enter end date (YYYY-MM-DD): ").strip()
+    def create_widgets(self):
+        # Date input frame
+        date_frame = ttkb.LabelFrame(self.root, text="Select Date Range", padding=10)
+        date_frame.pack(padx=10, pady=10, fill=X)
 
-    session = requests.Session()
-    session.headers.update({"Authorization": f"Token {API_TOKEN}"})
+        # Date 1
+        ttkb.Label(date_frame, text="Start Date (YYYY-MM-DD):").grid(row=0, column=0, padx=5, pady=5, sticky=W)
+        self.date1_entry = ttkb.Entry(date_frame)
+        self.date1_entry.grid(row=0, column=1, padx=5, pady=5)
 
-    engagements = fetch_engagements(session)
+        # Date 2
+        ttkb.Label(date_frame, text="End Date (YYYY-MM-DD):").grid(row=1, column=0, padx=5, pady=5, sticky=W)
+        self.date2_entry = ttkb.Entry(date_frame)
+        self.date2_entry.grid(row=1, column=1, padx=5, pady=5)
 
-    filtered = []
-    for e in engagements:
-        created_raw = e.get("created")
-        if not created_raw:  # skip if no date
-            continue
+        # Fetch button
+        ttkb.Button(self.root, text="Fetch Data", bootstyle=SUCCESS, command=self.fetch_and_display).pack(pady=10)
 
-        # Ensure string for slicing
-        created_str = str(created_raw)[:10]
-        if date1 <= created_str <= date2:
-            commit_hash = e.get("commit_hash", "").strip()
-            if not commit_hash or commit_hash.lower() == "not started":
-                review_status = "Approved"
-            else:
-                review_status = commit_hash
+        # Table frame
+        self.table_frame = ttkb.Frame(self.root)
+        self.table_frame.pack(padx=10, pady=10, fill=BOTH, expand=True)
 
+        # Treeview for table display
+        self.columns = ("Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (Days)", "IR", "No. of Jiras")
+        self.tree = ttkb.Treeview(self.table_frame, columns=self.columns, show="headings", bootstyle=PRIMARY)
+        for col in self.columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=120, anchor=CENTER)
+        self.tree.pack(fill=BOTH, expand=True)
+
+        # Scrollbar
+        scrollbar = ttkb.Scrollbar(self.table_frame, orient=VERTICAL, command=self.tree.yview)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+    def validate_date(self, date_str):
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            return None
+
+    def fetch_and_display(self):
+        # Clear previous table data
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Get and validate dates
+        date1_str = self.date1_entry.get()
+        date2_str = self.date2_entry.get()
+
+        date1 = self.validate_date(date1_str)
+        date2 = self.validate_date(date2_str)
+
+        if not date1 or not date2:
+            messagebox.showerror("Error", "Invalid date format. Use YYYY-MM-DD.")
+            return
+
+        if date1 > date2:
+            messagebox.showerror("Error", "Start date must be before or equal to end date.")
+            return
+
+        # Adjust dates for midnight to midnight
+        date1_start = date1.replace(hour=0, minute=0, second=0, microsecond=0)
+        date2_end = date2.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        # Fetch findings
+        findings = self.fetch_findings(date1_start, date2_end)
+        if not findings:
+            messagebox.showinfo("Info", "No findings found for the selected date range.")
+            return
+
+        # Process and display data
+        data = self.process_findings(findings)
+        self.display_in_table(data)
+        self.export_to_excel(data, date1_str, date2_str)
+
+    def fetch_findings(self, date1_start, date2_end):
+        findings = []
+        url = f"{self.api_url}findings/"
+        params = {
+            "created__gte": date1_start.isoformat(),
+            "created__lte": date2_end.isoformat(),
+            "limit": 100  # Adjust as needed
+        }
+
+        while url:
             try:
-                created_dt = parser.isoparse(str(e.get("created")))
-                updated_dt = parser.isoparse(str(e.get("updated")))
-                timeline_days = (updated_dt - created_dt).days
-            except Exception:
-                timeline_days = ""
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                findings.extend(data.get("results", []))
+                url = data.get("next")  # Handle pagination
+                params = {}  # Clear params for subsequent requests
+            except requests.RequestException as e:
+                messagebox.showerror("Error", f"Failed to fetch findings: {e}")
+                return []
+        return findings
 
-            jira_count = fetch_patch_jira_count(session, e["id"])
+    def fetch_jira_count(self, engagement_id):
+        url = f"{self.api_url}tests/"
+        params = {"engagement": engagement_id, "tags": "patch_jira"}
+        try:
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            return response.json().get("count", 0)
+        except requests.RequestException:
+            return 0
 
-            filtered.append({
-                "Patch": e.get("name", ""),
-                "Creation Date": created_str,
+    def process_findings(self, findings):
+        data = []
+        for finding in findings:
+            created = datetime.strptime(finding.get("created", ""), "%Y-%m-%dT%H:%M:%S.%fZ") if finding.get("created") else None
+            updated = datetime.strptime(finding.get("updated", ""), "%Y-%m-%dT%H:%M:%S.%fZ") if finding.get("updated") else None
+            commit_hash = finding.get("commit_hash", "Not Started")
+            review_status = "Approved" if commit_hash in ["Not Started", ""] else commit_hash
+            if review_status not in ["Approved with Exception", "Rejected", "Approved"]:
+                review_status = "Approved"
+
+            timeline_days = (updated - created).days if created and updated else 0
+
+            # Fetch JIRA count from engagement
+            engagement_id = finding.get("test", {}).get("engagement", 0)
+            jira_count = self.fetch_jira_count(engagement_id)
+
+            data.append({
+                "Patch": finding.get("name", ""),
+                "Creation Date": created.strftime("%Y-%m-%d") if created else "",
                 "Status": "Completed",
                 "Review Status": review_status,
-                "Completion Date": str(e.get("updated", ""))[:10],
-                "Timeline (days)": timeline_days,
-                "IR": e.get("version", ""),
+                "Completion Date": updated.strftime("%Y-%m-%d") if updated else "",
+                "Timeline (Days)": timeline_days,
+                "IR": finding.get("version", ""),
                 "No. of Jiras": jira_count
             })
+        return data
 
-    df = pd.DataFrame(filtered)
-    file_name = f"patches_completed_{date1}-{date2}.xlsx"
-    df.to_excel(file_name, index=False)
-    print(f"[SUCCESS] Data saved to {file_name}")
+    def display_in_table(self, data):
+        for row in data:
+            self.tree.insert("", END, values=(
+                row["Patch"],
+                row["Creation Date"],
+                row["Status"],
+                row["Review Status"],
+                row["Completion Date"],
+                row["Timeline (Days)"],
+                row["IR"],
+                row["No. of Jiras"]
+            ))
+
+    def export_to_excel(self, data, date1_str, date2_str):
+        df = pd.DataFrame(data)
+        filename = f"patches_completed_{date1_str}-{date2_str}.xlsx"
+        try:
+            df.to_excel(filename, index=False)
+            messagebox.showinfo("Success", f"Data exported to {filename} in current directory.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export to Excel: {e}")
+
+def main():
+    root = ttkb.Window()
+    app = DefectDojoGUI(root)
+    root.geometry("1000x600")
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
