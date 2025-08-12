@@ -1,6 +1,6 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # === CONFIG ===
 API_TOKEN = "hdjdjdjdjdjd"
@@ -12,19 +12,19 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-def fetch_findings_for_date(session, date_str):
-    """Fetch all findings created on the given date."""
-    url = f"{BASE_URL}/api/v2/findings/"
+def fetch_engagements(session, start_date, end_date):
+    """Fetch all engagements created between two dates."""
+    url = f"{BASE_URL}/api/v2/engagements/"
     params = {
-        "created_after": f"{date_str}T00:00:00",
-        "created_before": f"{date_str}T23:59:59",
+        "created_after": f"{start_date}T00:00:00",
+        "created_before": f"{end_date}T23:59:59",
         "limit": LIMIT,
         "offset": 0
     }
-    print(f"[INFO] Fetching findings for {date_str}...")
+    print(f"[INFO] Fetching engagements {start_date} to {end_date}...")
     r = session.get(url, params=params)
     if r.status_code != 200:
-        raise RuntimeError(f"Failed to fetch findings for {date_str}: {r.status_code} {r.text}")
+        raise RuntimeError(f"Failed to fetch engagements: {r.status_code} {r.text}")
     return r.json().get("results", [])
 
 def fetch_jira_count(session, engagement_id):
@@ -42,19 +42,19 @@ def fetch_jira_count(session, engagement_id):
         return 0
     return len(r.json().get("results", []))
 
-def process_findings(session, findings):
-    """Convert findings JSON into structured rows."""
+def process_engagements(session, engagements):
+    """Convert engagements JSON into structured rows."""
     rows = []
-    for f in findings:
-        created_date = f.get("created", "")[:10]  # YYYY-MM-DD
-        updated_date = f.get("updated", "")[:10]  # YYYY-MM-DD
+    for e in engagements:
+        created_date = e.get("created", "")[:10]  # YYYY-MM-DD
+        updated_date = e.get("updated", "")[:10]  # YYYY-MM-DD
 
-        # Review Status logic
-        commit_hash = f.get("commit_hash", "").strip()
+        # Review Status logic (commit_hash field if exists)
+        commit_hash = e.get("commit_hash", "").strip() if "commit_hash" in e else ""
         if commit_hash in ("", "Not Started"):
             review_status = "Approved"
         else:
-            review_status = commit_hash  # could be Approved, Approved with Exception, Rejected
+            review_status = commit_hash
 
         # Timeline in days
         try:
@@ -65,42 +65,32 @@ def process_findings(session, findings):
             timeline_days = ""
 
         # Jira count
-        engagement_id = f.get("engagement", None)
+        engagement_id = e.get("id", None)
         jira_count = fetch_jira_count(session, engagement_id) if engagement_id else 0
 
         rows.append({
-            "Patch": f.get("name", ""),
+            "Patch": e.get("name", ""),
             "Creation Date": created_date,
             "Status": "Completed",
             "Review Status": review_status,
             "Completion Date": updated_date,
             "Timeline (days)": timeline_days,
-            "IR": f.get("version", ""),
+            "IR": e.get("version", ""),
             "No. of Jiras": jira_count
         })
     return rows
 
 def main():
-    # Input dates
     date1 = input("Enter start date (YYYY-MM-DD): ").strip()
     date2 = input("Enter end date (YYYY-MM-DD): ").strip()
 
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    all_findings = []
-    current_date = datetime.strptime(date1, "%Y-%m-%d")
-    end_date = datetime.strptime(date2, "%Y-%m-%d")
+    engagements = fetch_engagements(session, date1, date2)
+    print(f"[INFO] Total engagements fetched: {len(engagements)}")
 
-    while current_date <= end_date:
-        date_str = current_date.strftime("%Y-%m-%d")
-        findings = fetch_findings_for_date(session, date_str)
-        all_findings.extend(findings)
-        current_date += timedelta(days=1)
-
-    print(f"[INFO] Total findings fetched: {len(all_findings)}")
-
-    rows = process_findings(session, all_findings)
+    rows = process_engagements(session, engagements)
 
     df = pd.DataFrame(rows)
     output_file = f"patches_completed_{date1}-{date2}.xlsx"
