@@ -39,6 +39,7 @@
         }
         button {
             padding: 10px 20px;
+            margin-right: 10px;
             background-color: #28a745;
             color: white;
             border: none;
@@ -47,6 +48,16 @@
         }
         button:hover {
             background-color: #218838;
+        }
+        #exportButton {
+            background-color: #007bff;
+        }
+        #exportButton:hover {
+            background-color: #0056b3;
+        }
+        #exportButton:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
         }
         table {
             width: 100%;
@@ -79,6 +90,36 @@
             background-color: #d4edda;
             color: #155724;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -94,6 +135,7 @@
                 <input type="text" id="date2" placeholder="YYYY-MM-DD">
             </div>
             <button onclick="fetchAndDisplay()">Fetch Data</button>
+            <button id="exportButton" onclick="exportToExcel()" disabled>Export Data</button>
         </div>
         <div id="message"></div>
         <table id="dataTable" style="display: none;">
@@ -112,9 +154,16 @@
             <tbody id="tableBody"></tbody>
         </table>
     </div>
+    <div id="loadingModal" class="modal">
+        <div class="modal-content">
+            <h3>Loading...</h3>
+            <div class="loader"></div>
+        </div>
+    </div>
 
     <script>
         const apiUrl = "https://demo.defectdojo.org/api/v2/";
+        let tableData = []; // Store data for export
 
         function showMessage(text, type) {
             const messageDiv = document.getElementById("message");
@@ -122,6 +171,10 @@
             messageDiv.className = type;
             messageDiv.style.display = "block";
             setTimeout(() => { messageDiv.style.display = "none"; }, 5000);
+        }
+
+        function showLoadingModal(show) {
+            document.getElementById("loadingModal").style.display = show ? "flex" : "none";
         }
 
         function validateDate(dateStr) {
@@ -229,9 +282,14 @@
             document.getElementById("dataTable").style.display = data.length ? "table" : "none";
         }
 
-        function exportToExcel(data, date1, date2) {
-            // Remove engagementId from export
-            const exportData = data.map(({ engagementId, ...rest }) => rest);
+        function exportToExcel() {
+            if (!tableData.length) {
+                showMessage("No data to export.", "error");
+                return;
+            }
+            const date1 = document.getElementById("date1").value;
+            const date2 = document.getElementById("date2").value;
+            const exportData = tableData.map(({ engagementId, ...rest }) => rest);
             const ws = XLSX.utils.json_to_sheet(exportData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Patches");
@@ -256,20 +314,25 @@
                 return;
             }
 
+            showLoadingModal(true);
+            document.getElementById("exportButton").disabled = true;
+
             // Adjust dates for midnight to midnight
             date1.setHours(0, 0, 0, 0);
             date2.setHours(23, 59, 59, 999);
 
             const engagements = await fetchEngagements(date1, date2);
+            showLoadingModal(false);
+
             if (!engagements.length) {
                 showMessage("No engagements found for the selected date range with tag 'patches'.", "info");
                 return;
             }
 
-            const data = processEngagements(engagements);
-            await populateJiraCounts(data);
-            displayInTable(data);
-            exportToExcel(data, date1Str, date2Str);
+            tableData = processEngagements(engagements);
+            await populateJiraCounts(tableData);
+            displayInTable(tableData);
+            document.getElementById("exportButton").disabled = false;
         }
     </script>
 </body>
