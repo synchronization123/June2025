@@ -1,102 +1,77 @@
 import requests
 import pandas as pd
 from datetime import datetime
+from dateutil import parser
 
-# === CONFIG ===
+# ---------------- CONFIG ---------------- #
 API_TOKEN = "hdjdjdjdjdjd"
 BASE_URL = "https://demo.defectdojo.org"
 LIMIT = 1000
+# ----------------------------------------- #
 
-HEADERS = {
-    "Authorization": f"Token {API_TOKEN}",
-    "Content-Type": "application/json"
-}
-
-def fetch_engagements(session, start_date, end_date):
-    """Fetch all engagements created between two dates."""
+def fetch_engagements(session):
     url = f"{BASE_URL}/api/v2/engagements/"
-    params = {
-        "created_after": f"{start_date}T00:00:00",
-        "created_before": f"{end_date}T23:59:59",
-        "limit": LIMIT,
-        "offset": 0
-    }
-    print(f"[INFO] Fetching engagements {start_date} to {end_date}...")
+    params = {"limit": LIMIT}
     r = session.get(url, params=params)
     if r.status_code != 200:
         raise RuntimeError(f"Failed to fetch engagements: {r.status_code} {r.text}")
     return r.json().get("results", [])
 
-def fetch_jira_count(session, engagement_id):
-    """Fetch Jira count for an engagement."""
+def fetch_patch_jira_count(session, engagement_id):
     url = f"{BASE_URL}/api/v2/tests/"
-    params = {
-        "engagement": engagement_id,
-        "tags": "patch_jira",
-        "limit": LIMIT,
-        "offset": 0
-    }
+    params = {"engagement": engagement_id, "tags": "patch_jira"}
     r = session.get(url, params=params)
     if r.status_code != 200:
-        print(f"[WARN] Could not fetch Jira count for engagement {engagement_id}")
+        print(f"[WARN] Failed to fetch Jira count for engagement {engagement_id}: {r.status_code}")
         return 0
     return len(r.json().get("results", []))
-
-def process_engagements(session, engagements):
-    """Convert engagements JSON into structured rows."""
-    rows = []
-    for e in engagements:
-        created_date = e.get("created", "")[:10]  # YYYY-MM-DD
-        updated_date = e.get("updated", "")[:10]  # YYYY-MM-DD
-
-        # Review Status logic (commit_hash field if exists)
-        commit_hash = e.get("commit_hash", "").strip() if "commit_hash" in e else ""
-        if commit_hash in ("", "Not Started"):
-            review_status = "Approved"
-        else:
-            review_status = commit_hash
-
-        # Timeline in days
-        try:
-            d_created = datetime.strptime(created_date, "%Y-%m-%d")
-            d_updated = datetime.strptime(updated_date, "%Y-%m-%d")
-            timeline_days = (d_updated - d_created).days
-        except:
-            timeline_days = ""
-
-        # Jira count
-        engagement_id = e.get("id", None)
-        jira_count = fetch_jira_count(session, engagement_id) if engagement_id else 0
-
-        rows.append({
-            "Patch": e.get("name", ""),
-            "Creation Date": created_date,
-            "Status": "Completed",
-            "Review Status": review_status,
-            "Completion Date": updated_date,
-            "Timeline (days)": timeline_days,
-            "IR": e.get("version", ""),
-            "No. of Jiras": jira_count
-        })
-    return rows
 
 def main():
     date1 = input("Enter start date (YYYY-MM-DD): ").strip()
     date2 = input("Enter end date (YYYY-MM-DD): ").strip()
 
     session = requests.Session()
-    session.headers.update(HEADERS)
+    session.headers.update({"Authorization": f"Token {API_TOKEN}"})
 
-    engagements = fetch_engagements(session, date1, date2)
-    print(f"[INFO] Total engagements fetched: {len(engagements)}")
+    engagements = fetch_engagements(session)
 
-    rows = process_engagements(session, engagements)
+    # Filter engagements by date range
+    filtered = []
+    for e in engagements:
+        created_date_str = e.get("created", "")[:10]  # Only YYYY-MM-DD
+        if not created_date_str:
+            continue
+        if date1 <= created_date_str <= date2:
+            # Determine Review Status from commit_hash
+            commit_hash = e.get("commit_hash", "").strip()
+            if not commit_hash or commit_hash.lower() == "not started":
+                review_status = "Approved"
+            else:
+                review_status = commit_hash  # Already one of Approved, Approved with Exception, Rejected
 
-    df = pd.DataFrame(rows)
-    output_file = f"patches_completed_{date1}-{date2}.xlsx"
-    df.to_excel(output_file, index=False)
+            # Dates & timeline
+            created_dt = parser.isoparse(e.get("created"))
+            updated_dt = parser.isoparse(e.get("updated"))
+            timeline_days = (updated_dt - created_dt).days
 
-    print(f"[SUCCESS] Data saved to {output_file}")
+            jira_count = fetch_patch_jira_count(session, e["id"])
+
+            filtered.append({
+                "Patch": e.get("name", ""),
+                "Creation Date": created_date_str,
+                "Status": "Completed",
+                "Review Status": review_status,
+                "Completion Date": e.get("updated", "")[:10],
+                "Timeline (days)": timeline_days,
+                "IR": e.get("version", ""),
+                "No. of Jiras": jira_count
+            })
+
+    # Save to Excel
+    df = pd.DataFrame(filtered)
+    file_name = f"patches_completed_{date1}-{date2}.xlsx"
+    df.to_excel(file_name, index=False)
+    print(f"[SUCCESS] Data saved to {file_name}")
 
 if __name__ == "__main__":
     main()
