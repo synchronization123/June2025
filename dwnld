@@ -1,72 +1,408 @@
+"""
+patch_summary.pyw
+
+- Fetches engagement "patch" summary data from a DefectDojo instance (v2 API).
+- Filters engagements by created date (midnight-to-midnight) between two dates
+  supplied by the GUI.
+- Builds a summary table and allows exporting to Excel file:
+    patches_completed_{date1}_{date2}.xlsx
+- All file I/O is restricted to current working directory.
+- Uses requests + pandas. Optionally looks nicer with ttkbootstrap + tkcalendar.
+
+Configure:
+ - API_TOKEN variable below (already set to the token you provided)
+ - DJ_HOST variable below (DefectDojo base URL)
+
+Author: ChatGPT (script tailored to your spec)
+"""
+
 import os
-import re
-import pandas as pd
-from pathlib import Path
+import sys
+import threading
+import datetime as dt
+import math
+from functools import partial
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
 
-# Define regex patterns for potential XXE vulnerabilities
-xxe_patterns = [
-    r'<!DOCTYPE\s+[^>]*\s*\[.*?!ENTITY\s+[^>]*>',  # DOCTYPE with ENTITY declaration
-    r'<!ENTITY\s+[^>]*>',                          # ENTITY declaration
-    r'XMLInputFactory\s*\.\s*newInstance\s*\(\s*\)',  # XMLInputFactory usage
-    r'DocumentBuilderFactory\s*\.\s*newInstance\s*\(\s*\)',  # DocumentBuilderFactory usage
-    r'SAXParserFactory\s*\.\s*newInstance\s*\(\s*\)',  # SAXParserFactory usage
-    r'javax\.xml\.parsers\.DocumentBuilder\s*',     # DocumentBuilder usage
-    r'javax\.xml\.stream\.XMLInputFactory\s*',     # XMLInputFactory import or usage
-    r'org\.xml\.sax\.helpers\.XMLReaderFactory\s*'  # XMLReaderFactory usage
-]
+try:
+    import requests
+except Exception as e:
+    raise RuntimeError("requests is required. Install with: pip install requests") from e
 
-def scan_file(file_path):
-    """Scan a single file for XXE vulnerabilities and return findings."""
-    findings = []
+try:
+    import pandas as pd
+except Exception as e:
+    raise RuntimeError("pandas is required. Install with: pip install pandas openpyxl") from e
+
+# ---------- CONFIG ----------
+API_TOKEN = "hdjdjdjdjdjd"
+DJ_HOST = "https://demo.defectdojo.org"  # no trailing slash
+PAGE_SIZE = 200  # for pagination when retrieving lists
+# ----------------------------
+
+HEADERS = {"Authorization": f"Token {API_TOKEN}", "Accept": "application/json"}
+
+# Utility: restrict file writes to current working directory
+CWD = os.getcwd()
+
+def path_in_cwd(fname):
+    """Return a path in current working directory; prevent absolute path usage."""
+    fname = os.path.basename(fname)
+    return os.path.join(CWD, fname)
+
+# ---------- API helpers ----------
+def paged_get(url, params=None, session=None, log_fn=None):
+    """
+    Generic paginator for DRF-style API responses with 'next' and 'results'.
+    Returns combined list of results.
+    """
+    if session is None:
+        session = requests.Session()
+        session.headers.update(HEADERS)
+    items = []
+    params = params or {}
+    # ensure page_size param if supported
+    params.setdefault("limit", PAGE_SIZE)
+    next_url = url
+    while next_url:
+        if log_fn:
+            log_fn(f"GET {next_url} params={params}")
+        resp = session.get(next_url, params=params if next_url.endswith('/api/v2/engagements/') or '?' in next_url else params)
+        if resp.status_code != 200:
+            raise RuntimeError(f"API error {resp.status_code}: {resp.text}")
+        j = resp.json()
+        if isinstance(j, dict) and "results" in j:
+            items.extend(j["results"])
+            next_url = j.get("next")
+            # after first page subsequent next_url is full URL; clear params to avoid duplication
+            params = {}
+        elif isinstance(j, list):
+            items.extend(j)
+            # no pagination meta
+            break
+        else:
+            # some endpoints may return object; try to be robust
+            items.append(j)
+            break
+    return items
+
+def fetch_engagements(log_fn=None):
+    """Fetch all engagements (paginated)."""
+    url = f"{DJ_HOST}/api/v2/engagements/"
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    return paged_get(url, params={"limit": PAGE_SIZE}, session=session, log_fn=log_fn)
+
+def count_patch_jiras_for_engagement(engagement_id, session=None, log_fn=None):
+    """
+    Call /api/v2/tests/?engagement={id}&tags=patch_jira and return the count of returned items.
+    This counts tests that have the 'patch_jira' tag (per your spec).
+    """
+    if session is None:
+        session = requests.Session()
+        session.headers.update(HEADERS)
+    url = f"{DJ_HOST}/api/v2/tests/"
+    params = {"engagement": engagement_id, "tags": "patch_jira", "limit": PAGE_SIZE}
+    # use paginator in case many
+    items = paged_get(url, params=params, session=session, log_fn=log_fn)
+    return len(items)
+
+# ---------- Date helpers ----------
+def parse_date_str(s):
+    """Parse YYYY-MM-DD strictly and return a date object."""
     try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
-            lines = file.readlines()
-            for line_number, line in enumerate(lines, 1):
-                for pattern in xxe_patterns:
-                    if re.search(pattern, line, re.IGNORECASE):
-                        findings.append({
-                            'Filepath': str(file_path),
-                            'Filename': os.path.basename(file_path),
-                            'Line Number': line_number,
-                            'Vulnerable Code Line': line.strip()
-                        })
-    except Exception as e:
-        print(f"Error reading {file_path}: {e}")
-    return findings
+        return dt.datetime.strptime(s.strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise ValueError("Date must be in YYYY-MM-DD format")
 
-def scan_directory(directory):
-    """Scan all JSP, Java, and XML files in directory and subdirectories for XXE vulnerabilities."""
-    all_findings = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith(('.jsp', '.java', '.xml')):  # Include .java files
-                file_path = os.path.join(root, file)
-                findings = scan_file(file_path)
-                all_findings.extend(findings)
-    return all_findings
+def date_midnight_range_for_date(d: dt.date):
+    """Return (start_dt, end_dt) datetimes for midnight-to-midnight inclusive-exclusive."""
+    start = dt.datetime.combine(d, dt.time.min)
+    end = dt.datetime.combine(d + dt.timedelta(days=1), dt.time.min)
+    return start, end
 
-def save_to_excel(findings, output_file):
-    """Save findings to an Excel file in the current directory."""
-    if not findings:
-        print("No XXE vulnerabilities found.")
-        return
-    
-    df = pd.DataFrame(findings)
-    df.to_excel(output_file, index=False, engine='openpyxl')
-    print(f"Findings saved to {output_file}")
+def within_midnight_range(created_str, start_dt, end_dt):
+    """created_str expected ISO-like 'YYYY-MM-DD...' -> compare datetimes in UTC naive."""
+    try:
+        # DefectDojo typically returns e.g. "2023-07-01T12:34:56Z" or without Z.
+        created_dt = dt.datetime.fromisoformat(created_str.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        # fallback parse date only
+        created_dt = dt.datetime.strptime(created_str[:10], "%Y-%m-%d")
+    return start_dt <= created_dt < end_dt
 
+# ---------- GUI ----------
+class PatchSummaryApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("Patch Summary - DefectDojo")
+        # Try to use ttkbootstrap style if available for more modern look
+        try:
+            import ttkbootstrap as tb
+            style = tb.Style("flatly")
+            self.tk_style = "ttkbootstrap"
+        except Exception:
+            style = ttk.Style()
+            # configure a slightly modern theme if possible
+            try:
+                style.theme_use("clam")
+            except Exception:
+                pass
+            self.tk_style = "ttk"
+
+        # Main frames
+        frm_top = ttk.Frame(root, padding=(10, 8))
+        frm_top.pack(fill="x")
+
+        frm_buttons = ttk.Frame(root, padding=(10, 6))
+        frm_buttons.pack(fill="x")
+
+        frm_table = ttk.Frame(root, padding=(10, 6))
+        frm_table.pack(fill="both", expand=True)
+
+        frm_console = ttk.Frame(root, padding=(10, 6))
+        frm_console.pack(fill="both", expand=False)
+
+        # Date inputs
+        ttk.Label(frm_top, text="Date 1 (created):").grid(row=0, column=0, sticky="w")
+        ttk.Label(frm_top, text="Date 2 (created):").grid(row=0, column=2, sticky="w")
+
+        # Try to load tkcalendar DateEntry; otherwise fallback to simple Entry with placeholder YYYY-MM-DD
+        self.date1_var = tk.StringVar()
+        self.date2_var = tk.StringVar()
+
+        try:
+            from tkcalendar import DateEntry
+            self.cal1 = DateEntry(frm_top, width=12, date_pattern="yyyy-mm-dd", textvariable=self.date1_var)
+            self.cal2 = DateEntry(frm_top, width=12, date_pattern="yyyy-mm-dd", textvariable=self.date2_var)
+            self.cal1.grid(row=0, column=1, padx=(2, 20))
+            self.cal2.grid(row=0, column=3, padx=(2, 10))
+        except Exception:
+            # fallback entries with validation
+            ent1 = ttk.Entry(frm_top, width=14, textvariable=self.date1_var)
+            ent2 = ttk.Entry(frm_top, width=14, textvariable=self.date2_var)
+            ent1.insert(0, dt.date.today().isoformat())
+            ent2.insert(0, dt.date.today().isoformat())
+            ent1.grid(row=0, column=1, padx=(2, 20))
+            ent2.grid(row=0, column=3, padx=(2, 10))
+            ttk.Label(frm_top, text="(YYYY-MM-DD)").grid(row=0, column=4, sticky="w")
+
+        # Buttons
+        btn_fetch = ttk.Button(frm_buttons, text="Fetch", command=self.on_fetch)
+        btn_export = ttk.Button(frm_buttons, text="Export to Excel", command=self.on_export)
+        btn_clear = ttk.Button(frm_buttons, text="Clear", command=self.on_clear)
+        btn_quit = ttk.Button(frm_buttons, text="Quit", command=root.quit)
+
+        btn_fetch.pack(side="left", padx=6, pady=6)
+        btn_export.pack(side="left", padx=6, pady=6)
+        btn_clear.pack(side="left", padx=6, pady=6)
+        btn_quit.pack(side="right", padx=6, pady=6)
+
+        # Table (Treeview)
+        columns = ("Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (day(s))", "IR", "No. Of Jiras")
+        self.tree = ttk.Treeview(frm_table, columns=columns, show="headings", selectmode="browse")
+        for col in columns:
+            self.tree.heading(col, text=col)
+            # set reasonable widths
+            if col == "Patch":
+                self.tree.column(col, width=220, anchor="w")
+            elif col == "Review Status":
+                self.tree.column(col, width=140, anchor="center")
+            else:
+                self.tree.column(col, width=110, anchor="center")
+        self.tree.pack(fill="both", expand=True, side="left")
+
+        # vertical scrollbar
+        vsb = ttk.Scrollbar(frm_table, orient="vertical", command=self.tree.yview)
+        vsb.pack(side="right", fill="y")
+        self.tree.configure(yscrollcommand=vsb.set)
+
+        # Console log below buttons
+        ttk.Label(frm_console, text="Console / Progress:").pack(anchor="w")
+        self.txt_console = tk.Text(frm_console, height=8, wrap="word", state="disabled")
+        self.txt_console.pack(fill="both", expand=True)
+
+        # internal data store
+        self.summary_df = pd.DataFrame(columns=columns)
+
+    # logging helper
+    def log(self, msg):
+        ts = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{ts}] {msg}\n"
+        self.txt_console.configure(state="normal")
+        self.txt_console.insert("end", line)
+        self.txt_console.see("end")
+        self.txt_console.configure(state="disabled")
+
+    def clear_tree(self):
+        for r in self.tree.get_children():
+            self.tree.delete(r)
+
+    def populate_tree_from_df(self):
+        self.clear_tree()
+        for _, row in self.summary_df.iterrows():
+            vals = [row.get(c, "") for c in self.summary_df.columns]
+            # convert to simple strings
+            vals = [("" if pd.isna(v) else str(v)) for v in vals]
+            self.tree.insert("", "end", values=vals)
+
+    def on_clear(self):
+        self.summary_df = self.summary_df.iloc[0:0]
+        self.populate_tree_from_df()
+        self.log("Cleared table and data.")
+
+    def on_export(self):
+        if self.summary_df.empty:
+            messagebox.showinfo("Export", "No data to export. Fetch first.")
+            return
+        d1 = self.date1_var.get()
+        d2 = self.date2_var.get()
+        try:
+            parse_date_str(d1)
+            parse_date_str(d2)
+        except Exception as e:
+            messagebox.showerror("Date error", f"Invalid date(s): {e}")
+            return
+        filename = f"patches_completed_{d1}_{d2}.xlsx"
+        path = path_in_cwd(filename)
+        try:
+            # write excel using pandas
+            self.summary_df.to_excel(path, index=False, engine="openpyxl")
+            self.log(f"Excel exported: {path}")
+            messagebox.showinfo("Export", f"Exported to {path}")
+        except Exception as e:
+            messagebox.showerror("Export failed", str(e))
+            self.log(f"Export failed: {e}")
+
+    def on_fetch(self):
+        # validate dates
+        d1s = self.date1_var.get().strip()
+        d2s = self.date2_var.get().strip()
+        try:
+            d1 = parse_date_str(d1s)
+            d2 = parse_date_str(d2s)
+        except Exception as e:
+            messagebox.showerror("Date error", f"Invalid date format. Use YYYY-MM-DD.\n{e}")
+            return
+
+        # run fetch in background thread to keep UI responsive
+        t = threading.Thread(target=self._fetch_thread, args=(d1, d2), daemon=True)
+        t.start()
+
+    def _fetch_thread(self, date1, date2):
+        # determine midnight ranges for both dates (each param is created midnight->midnight)
+        start1, end1 = date_midnight_range_for_date(date1)
+        start2, end2 = date_midnight_range_for_date(date2)
+        self.log(f"Starting fetch. Date1 range {start1} -> {end1}, Date2 range {start2} -> {end2}")
+        try:
+            engagements = fetch_engagements(log_fn=self.log)
+            self.log(f"Fetched {len(engagements)} total engagements from server.")
+        except Exception as e:
+            self.log(f"Failed to fetch engagements: {e}")
+            messagebox.showerror("API error", f"Failed to fetch engagements: {e}")
+            return
+
+        # We'll filter engagements where created is in either Date1 or Date2 range.
+        # The user requested Date1 param: created (midnight to midnight)
+        # Date2 param: created (midnight to midnight)
+        selected = []
+        for eng in engagements:
+            created = eng.get("created")
+            if not created:
+                continue
+            try:
+                in_range1 = within_midnight_range(created, start1, end1)
+                in_range2 = within_midnight_range(created, start2, end2)
+            except Exception:
+                in_range1 = False
+                in_range2 = False
+
+            if in_range1 or in_range2:
+                selected.append(eng)
+
+        self.log(f"{len(selected)} engagements matched the provided dates.")
+
+        # For each selected engagement craft row according to mapping
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        rows = []
+        total = len(selected)
+        for idx, eng in enumerate(selected, start=1):
+            self.log(f"Processing {idx}/{total}: engagement id={eng.get('id')} name={eng.get('name')}")
+            name = eng.get("name") or ""
+            created = eng.get("created") or ""
+            updated = eng.get("updated") or ""
+            commit_hash = eng.get("commit_hash") or ""
+            version = eng.get("version") or ""
+            # Status hardcoded as Completed per spec
+            status = "Completed"
+
+            # Review Status rules:
+            # If commit_hash is blank or equals "Not Started" -> Approved
+            # else use values like "Approved with Exception", "Rejected", "Approved" (if provided).
+            commit_val = commit_hash.strip()
+            if commit_val == "" or commit_val.lower() == "not started":
+                review_status = "Approved"
+            else:
+                # keep provided value but Title-case common words for neatness
+                review_status = commit_val
+
+            # Completion Date: use 'updated' as YYYY-MM-DD if present
+            try:
+                completion_date = updated[:10] if updated else ""
+            except Exception:
+                completion_date = ""
+
+            creation_date = created[:10] if created else ""
+
+            # Timeline = (updated - created) in days
+            timeline = ""
+            try:
+                dt_created = dt.datetime.fromisoformat(created.replace("Z", "+00:00")).replace(tzinfo=None)
+                dt_updated = dt.datetime.fromisoformat(updated.replace("Z", "+00:00")).replace(tzinfo=None)
+                delta_days = (dt_updated - dt_created).days
+                # if negative or zero adapt to 0
+                if delta_days < 0:
+                    delta_days = 0
+                timeline = f"{delta_days}"
+            except Exception:
+                timeline = ""
+
+            # No. Of Jiras: count tests with tags=patch_jira for this engagement
+            try:
+                jira_count = count_patch_jiras_for_engagement(eng.get("id"), session=session, log_fn=self.log)
+            except Exception as e:
+                self.log(f"Failed to count JIRAs for engagement {eng.get('id')}: {e}")
+                jira_count = "ERR"
+
+            row = {
+                "Patch": name,
+                "Creation Date": creation_date,
+                "Status": status,
+                "Review Status": review_status,
+                "Completion Date": completion_date,
+                "Timeline (day(s))": timeline,
+                "IR": version,
+                "No. Of Jiras": jira_count,
+            }
+            rows.append(row)
+
+        # Build DataFrame and update UI (in main thread)
+        df = pd.DataFrame(rows, columns=["Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (day(s))", "IR", "No. Of Jiras"])
+        self.summary_df = df
+
+        # schedule UI update on main thread
+        self.root.after(0, self.populate_tree_from_df)
+        self.log("Fetch complete and table populated.")
+
+# ---------- Run ----------
 def main():
-    # Get current directory as the root for scanning
-    directory = os.getcwd()
-    output_file = os.path.join(directory, 'xxe_vulnerabilities.xlsx')
-    
-    print(f"Scanning JSP, Java, and XML files in {directory} and its subdirectories...")
-    
-    # Scan for vulnerabilities
-    findings = scan_directory(directory)
-    
-    # Save results to Excel
-    save_to_excel(findings, output_file)
+    root = tk.Tk()
+    # ensure minimum size
+    root.geometry("1000x600")
+    app = PatchSummaryApp(root)
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
