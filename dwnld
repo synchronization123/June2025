@@ -1,101 +1,112 @@
 import requests
-from datetime import datetime
 import pandas as pd
+from datetime import datetime, timedelta
 
-# ===== CONFIG =====
+# === CONFIG ===
 API_TOKEN = "hdjdjdjdjdjd"
 BASE_URL = "https://demo.defectdojo.org"
-HEADERS = {"Authorization": f"Token {API_TOKEN}"}
 LIMIT = 1000
 
-# ===== API FUNCTIONS =====
-def fetch_engagements(session):
-    url = f"{BASE_URL}/api/v2/engagements/"
-    params = {"limit": LIMIT, "offset": 0}
-    print(f"[INFO] Fetching engagements...")
-    r = session.get(url, params=params)
-    if r.status_code != 200:
-        raise RuntimeError(f"Failed to fetch engagements: {r.status_code} {r.text}")
-    return r.json().get("results", [])
+HEADERS = {
+    "Authorization": f"Token {API_TOKEN}",
+    "Content-Type": "application/json"
+}
 
 def fetch_findings_for_date(session, date_str):
+    """Fetch all findings created on the given date."""
     url = f"{BASE_URL}/api/v2/findings/"
     params = {
-        "created": date_str,
+        "created_after": f"{date_str}T00:00:00",
+        "created_before": f"{date_str}T23:59:59",
         "limit": LIMIT,
         "offset": 0
     }
     print(f"[INFO] Fetching findings for {date_str}...")
     r = session.get(url, params=params)
     if r.status_code != 200:
-        raise RuntimeError(f"Failed to fetch findings: {r.status_code} {r.text}")
+        raise RuntimeError(f"Failed to fetch findings for {date_str}: {r.status_code} {r.text}")
     return r.json().get("results", [])
 
-def fetch_patch_jira_count(session, engagement_id):
+def fetch_jira_count(session, engagement_id):
+    """Fetch Jira count for an engagement."""
     url = f"{BASE_URL}/api/v2/tests/"
-    params = {"engagement": engagement_id, "tags": "patch_jira", "limit": LIMIT, "offset": 0}
+    params = {
+        "engagement": engagement_id,
+        "tags": "patch_jira",
+        "limit": LIMIT,
+        "offset": 0
+    }
     r = session.get(url, params=params)
     if r.status_code != 200:
+        print(f"[WARN] Could not fetch Jira count for engagement {engagement_id}")
         return 0
     return len(r.json().get("results", []))
 
-# ===== MAIN =====
+def process_findings(session, findings):
+    """Convert findings JSON into structured rows."""
+    rows = []
+    for f in findings:
+        created_date = f.get("created", "")[:10]  # YYYY-MM-DD
+        updated_date = f.get("updated", "")[:10]  # YYYY-MM-DD
+
+        # Review Status logic
+        commit_hash = f.get("commit_hash", "").strip()
+        if commit_hash in ("", "Not Started"):
+            review_status = "Approved"
+        else:
+            review_status = commit_hash  # could be Approved, Approved with Exception, Rejected
+
+        # Timeline in days
+        try:
+            d_created = datetime.strptime(created_date, "%Y-%m-%d")
+            d_updated = datetime.strptime(updated_date, "%Y-%m-%d")
+            timeline_days = (d_updated - d_created).days
+        except:
+            timeline_days = ""
+
+        # Jira count
+        engagement_id = f.get("engagement", None)
+        jira_count = fetch_jira_count(session, engagement_id) if engagement_id else 0
+
+        rows.append({
+            "Patch": f.get("name", ""),
+            "Creation Date": created_date,
+            "Status": "Completed",
+            "Review Status": review_status,
+            "Completion Date": updated_date,
+            "Timeline (days)": timeline_days,
+            "IR": f.get("version", ""),
+            "No. of Jiras": jira_count
+        })
+    return rows
+
 def main():
-    date1 = input("Enter Date 1 (YYYY-MM-DD): ").strip()
-    date2 = input("Enter Date 2 (YYYY-MM-DD): ").strip()
+    # Input dates
+    date1 = input("Enter start date (YYYY-MM-DD): ").strip()
+    date2 = input("Enter end date (YYYY-MM-DD): ").strip()
 
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    engagements = fetch_engagements(session)
-    findings_all = []
-    for date_str in [date1, date2]:
+    all_findings = []
+    current_date = datetime.strptime(date1, "%Y-%m-%d")
+    end_date = datetime.strptime(date2, "%Y-%m-%d")
+
+    while current_date <= end_date:
+        date_str = current_date.strftime("%Y-%m-%d")
         findings = fetch_findings_for_date(session, date_str)
-        findings_all.extend(findings)
+        all_findings.extend(findings)
+        current_date += timedelta(days=1)
 
-    rows = []
-    for f in findings_all:
-        name = f.get("name", "")
-        created = f.get("created", "")[:10]
-        updated = f.get("updated", "")[:10]
-        commit_hash = f.get("commit_hash", "")
-        version = f.get("version", "")
-        engagement_id = f.get("engagement")
-        jiras_count = fetch_patch_jira_count(session, engagement_id)
+    print(f"[INFO] Total findings fetched: {len(all_findings)}")
 
-        review_status = commit_hash if commit_hash else "Approved"
-        if review_status.strip().lower() == "not started" or not review_status.strip():
-            review_status = "Approved"
+    rows = process_findings(session, all_findings)
 
-        created_dt = datetime.strptime(created, "%Y-%m-%d")
-        updated_dt = datetime.strptime(updated, "%Y-%m-%d") if updated else created_dt
-        timeline_days = (updated_dt - created_dt).days
+    df = pd.DataFrame(rows)
+    output_file = f"patches_completed_{date1}-{date2}.xlsx"
+    df.to_excel(output_file, index=False)
 
-        rows.append([
-            name,
-            created,
-            "Completed",
-            review_status,
-            updated,
-            f"{timeline_days} day(s)",
-            version,
-            jiras_count
-        ])
-
-    df = pd.DataFrame(rows, columns=[
-        "Patch",
-        "Creation Date",
-        "Status",
-        "Review Status",
-        "Completion Date",
-        "Timeline",
-        "IR",
-        "No. Of Jiras"
-    ])
-
-    filename = f"patches_completed_{date1}-{date2}.xlsx"
-    df.to_excel(filename, index=False)
-    print(f"[SUCCESS] Data saved to {filename}")
+    print(f"[SUCCESS] Data saved to {output_file}")
 
 if __name__ == "__main__":
     main()
