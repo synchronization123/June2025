@@ -59,6 +59,10 @@
             background-color: #6c757d;
             cursor: not-allowed;
         }
+        #totalCount {
+            margin-top: 10px;
+            font-weight: bold;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -137,6 +141,7 @@
             </div>
             <button onclick="fetchAndDisplay()">Fetch Data</button>
             <button id="exportButton" onclick="exportToExcel()" disabled>Export Data</button>
+            <div id="totalCount">Total: 0</div>
         </div>
         <div id="message"></div>
         <table id="dataTable" style="display: none;">
@@ -239,7 +244,7 @@
 
                 const created = engagement.created ? new Date(engagement.created) : null;
                 const createdStr = created ? formatDateToYMD(created) : "";
-                // Filter strictly by created date range
+                // Filter strictly by created date range (inclusive)
                 if (createdStr < startDateStr || createdStr > endDateStr) continue;
 
                 const updated = engagement.updated ? new Date(engagement.updated) : null;
@@ -291,6 +296,7 @@
                 tableBody.appendChild(tr);
             }
             document.getElementById("dataTable").style.display = data.length ? "table" : "none";
+            document.getElementById("totalCount").textContent = `Total: ${data.length}`;
         }
 
         function exportToExcel() {
@@ -303,48 +309,4 @@
             const exportData = tableData.map(({ engagementId, ...rest }) => rest);
             const ws = XLSX.utils.json_to_sheet(exportData);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Patches");
-            const filename = `patches_completed_${date1}-${date2}.xlsx`;
-            XLSX.writeFile(wb, filename);
-        }
-
-        async function fetchAndDisplay() {
-            const date1Str = document.getElementById("date1").value;
-            const date2Str = document.getElementById("date2").value;
-
-            const date1 = validateDate(date1Str);
-            const date2 = validateDate(date2Str);
-
-            if (!date1 || !date2) {
-                showMessage("Invalid date format. Use YYYY-MM-DD.", "error");
-                return;
-            }
-
-            if (date1 > date2) {
-                showMessage("Start date must be before or equal to end date.", "error");
-                return;
-            }
-
-            showLoadingModal(true);
-            document.getElementById("exportButton").disabled = true;
-
-            // Adjust dates for midnight to midnight
-            date1.setHours(0, 0, 0, 0);
-            date2.setHours(23, 59, 59, 999);
-
-            const engagements = await fetchEngagements(date1, date2);
-            if (!engagements.length) {
-                showLoadingModal(false);
-                showMessage("No engagements found for the selected date range with tag 'patches'.", "info");
-                return;
-            }
-
-            tableData = processEngagements(engagements, date1, date2);
-            await populateJiraCounts(tableData);
-            displayInTable(tableData);
-            showLoadingModal(false);
-            document.getElementById("exportButton").disabled = !tableData.length;
-        }
-    </script>
-</body>
-</html>
+            XLSX.utils.book_append_sheet
