@@ -1,453 +1,171 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DefectDojo Patch Summary</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f4f4f9;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-        .input-section {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .input-group {
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-        }
-        label {
-            display: inline-block;
-            width: 180px;
-            font-weight: bold;
-        }
-        input[type="date"] {
-            padding: 8px;
-            width: 200px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            padding: 10px 20px;
-            margin-right: 10px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #218838;
-        }
-        #exportButton {
-            background-color: #007bff;
-        }
-        #exportButton:hover {
-            background-color: #0056b3;
-        }
-        #exportButton:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        #totalCount {
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        #statusCounts {
-            margin-left: 20px;
-            font-weight: bold;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: #fff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        th, td {
-            padding: 12px;
-            text-align: center;
-            border: 1px solid #ddd;
-        }
-        th {
-            background-color: #007bff;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        .error, .info {
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        .info {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="input-section">
-            <h2>DefectDojo Patch Summary</h2>
-            <div class="input-group">
-                <label for="date1">Start Date:</label>
-                <input type="date" id="date1">
-                <span id="statusCounts">
-                    Approved Count: 0 | Approved with Exception Count: 0 | Rejected Count: 0
-                </span>
-            </div>
-            <div class="input-group">
-                <label for="date2">End Date:</label>
-                <input type="date" id="date2">
-            </div>
-            <button onclick="fetchAndDisplay()">Fetch Data</button>
-            <button id="exportButton" onclick="exportToExcel()" disabled>Export Data</button>
-            <div id="totalCount">Total: 0</div>
-        </div>
-        <div id="message"></div>
-        <table id="dataTable" style="display: none;">
-            <thead>
-                <tr>
-                    <th>Patch</th>
-                    <th>Creation Date</th>
-                    <th>Status</th>
-                    <th>Review Status</th>
-                    <th>Completion Date</th>
-                    <th>Timeline (Days)</th>
-                    <th>IR</th>
-                    <th>No. of Jiras</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody"></tbody>
-        </table>
-    </div>
-    <div id="loadingModal" class="modal">
-        <div class="modal-content">
-            <h3>Loading...</h3>
-            <div class="loader"></div>
-        </div>
-    </div>
+import pandas as pd
+import requests
+import os
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill, Alignment, Border, Side
+from datetime import datetime, timedelta
+import tkinter as tk
+from tkinter import messagebox
+import matplotlib.pyplot as plt
+import calendar
 
-    <script>
-        const apiUrl = "https://demo.defectdojo.org/api/v2/";
-        let tableData = []; // Store data for export
+def fetch_jira_data():
+    try:
+        # Clear old C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv
+        with open('C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv', 'w') as f:
+            f.write('')
 
-        function showMessage(text, type) {
-            const messageDiv = document.getElementById("message");
-            messageDiv.textContent = text;
-            messageDiv.className = type;
-            messageDiv.style.display = "block";
-            setTimeout(() => { messageDiv.style.display = "none"; }, 5000);
+        # Compute end of current month
+        today = datetime.today()
+        year, month = today.year, today.month
+        _, last_day_of_month = calendar.monthrange(year, month)
+        end_date = datetime(year, month, last_day_of_month)
+
+        # SLA days
+        slas_standard = {"Critical": 15, "High": 30, "Medium": 90, "Low": 365}
+        slas_special = {"Critical": 184, "High": 214, "Medium": 274, "Low": 549}
+
+        # Calculate threshold dates
+        def calc_threshold(ed, days):
+            return (ed - timedelta(days=days)).strftime("%Y-%m-%d")
+
+        t_std_crit = calc_threshold(end_date, slas_standard["Critical"])
+        t_std_high = calc_threshold(end_date, slas_standard["High"])
+        t_std_med = calc_threshold(end_date, slas_standard["Medium"])
+        t_std_low = calc_threshold(end_date, slas_standard["Low"])
+
+        t_sp_crit = calc_threshold(end_date, slas_special["Critical"])
+        t_sp_high = calc_threshold(end_date, slas_special["High"])
+        t_sp_med = calc_threshold(end_date, slas_special["Medium"])
+        t_sp_low = calc_threshold(end_date, slas_special["Low"])
+
+        # Build dynamic JQL
+        jql = f'''
+        (component in (Security, appsecurity) and component not in ("drmc") and issuetype not in (epic, Sub-task) and project in (crm, ghi, hjf) and issuetype not in ("Spike/Task", Epic, Story, Sub-task) and component not in (dfd, uukj) and labels not in (yuit) and (Severity in (Critical) and created <= "{t_std_crit}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= "{t_std_high}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= "{t_std_med}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= "{t_std_low}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))
+        OR
+        (labels in (fgfg) and project in (fgf) and issuetype not in ("Spike/Task", Epic, Story, task) and component not in (sdsdd) and (Severity in (Critical) and created <= "{t_sp_crit}" and status not in (Done, Retrospected) or Severity in (High) and created <= "{t_sp_high}" and status not in (Done, Retrospected) or Severity in (Medium) and created <= "{t_sp_med}" and status not in (Done, Retrospected) or Severity in (Low, Informational) and created <= "{t_sp_low}" and status not in (Done, Retrospected)) and (Severity in (Critical) and created <= "{t_std_crit}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= "{t_std_high}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= "{t_std_med}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= "{t_std_low}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))
+        '''
+
+        # Jira API Setup
+        url = 'https://jira.demo.com/rest/api/2/search'
+        headers = {
+            "Authorization": "Bearer hjghjjghjgjhgjh",
+            "Content-Type": "application/json"
         }
 
-        function showLoadingModal(show) {
-            document.getElementById("loadingModal").style.display = show ? "flex" : "none";
+        params = {
+            'jql': jql,
+            'maxResults': 1000
         }
 
-        function validateDate(dateStr) {
-            if (!dateStr) return null;
-            const regex = /^\d{4}-\d{2}-\d{2}$/;
-            if (!regex.test(dateStr)) return null;
-            const date = new Date(dateStr);
-            return isNaN(date) ? null : date;
-        }
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
 
-        function formatDateToYMD(date) {
-            if (!date) return "";
-            return date.toISOString().split("T")[0]; // Ensures YYYY-MM-DD
-        }
+        # Extract project names from issues
+        projects = [issue['fields']['project']['name'] for issue in data['issues']]
+        df = pd.DataFrame(projects, columns=['Project'])
+        df_count = df['Project'].value_counts().reset_index()
+        df_count.columns = ['Project', 'Count']
 
-        async function fetchEngagements(startDate, endDate) {
-            const url = `${apiUrl}engagements/`;
-            const params = new URLSearchParams({
-                tags: "patches",
-                created__gte: startDate.toISOString(),
-                created__lte: endDate.toISOString(),
-                offset: 0,
-                limit: 1000,
-                o: "-created" // Sort by created in descending order
-            });
-            try {
-                const response = await fetch(`${url}?${params}`);
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                const data = await response.json();
-                return data.results || [];
-            } catch (error) {
-                showMessage(`Failed to fetch engagements: ${error.message}`, "error");
-                return [];
-            }
-        }
+        # Save as C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv
+        df_count.to_csv('C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv', index=False)
 
-        async function fetchJiraCount(engagementId) {
-            const url = `${apiUrl}tests/`;
-            const params = new URLSearchParams({
-                engagement: engagementId,
-                tags: "patch_jira"
-            });
-            try {
-                const response = await fetch(`${url}?${params}`);
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                const data = await response.json();
-                return data.count || 0;
-            } catch (error) {
-                console.warn(`Failed to fetch JIRA count for engagement ${engagementId}: ${error.message}`);
-                return 0;
-            }
-        }
+    except Exception as e:
+        messagebox.showerror("Jira Fetch Error", str(e))
+        return False
 
-        function processEngagements(engagements, startDate, endDate) {
-            const startDateStr = formatDateToYMD(startDate);
-            const endDateStr = formatDateToYMD(endDate);
-            const data = [];
-            for (const engagement of engagements) {
-                // Exclude engagements where status is not "Completed"
-                if (engagement.status !== "Completed") continue;
+    return True
 
-                const created = engagement.created ? new Date(engagement.created) : null;
-                const createdStr = created ? formatDateToYMD(created) : "";
-                // Filter strictly by created date range (inclusive)
-                if (createdStr < startDateStr || createdStr > endDateStr) continue;
+def process_files():
+    try:
+        # Step 1: Fetch Jira data first
+        if not fetch_jira_data():
+            return
 
-                const updated = engagement.updated ? new Date(engagement.updated) : null;
-                let commitHash = engagement.commit_hash || "Not Started";
-                let reviewStatus = commitHash === "Not Started" || commitHash === "" ? "Approved" : commitHash;
-                if (!["Approved with Exception", "Rejected", "Approved"].includes(reviewStatus)) {
-                    reviewStatus = "Approved";
-                }
-                const timelineDays = created && updated ? Math.round((updated - created) / (1000 * 60 * 60 * 24)) : 0;
+        # Step 2: Load dailycount
+        csv_file = 'C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv'
+        excel_file = 'C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\project.xlsx'
+        image_file = 'C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\count.png'
 
-                data.push({
-                    Patch: engagement.name || "",
-                    "Creation Date": createdStr,
-                    Status: "Completed", // Hardcoded as per original requirement
-                    "Review Status": reviewStatus,
-                    "Completion Date": formatDateToYMD(updated),
-                    "Timeline (Days)": timelineDays,
-                    IR: engagement.version || "",
-                    "No. of Jiras": 0, // Placeholder
-                    engagementId: engagement.id // Store ID for JIRA count
-                });
-            }
-            return data;
-        }
+        df_csv = pd.read_csv(csv_file)
 
-        async function populateJiraCounts(data) {
-            for (const row of data) {
-                if (row.engagementId) {
-                    row["No. of Jiras"] = await fetchJiraCount(row.engagementId);
-                }
-            }
-        }
+        # Step 3: Load Excel
+        df_excel = pd.read_excel(excel_file)
 
-        function displayInTable(data) {
-            const tableBody = document.getElementById("tableBody");
-            tableBody.innerHTML = "";
-            for (const row of data) {
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td>${row.Patch}</td>
-                    <td>${row["Creation Date"]}</td>
-                    <td>${row.Status}</td>
-                    <td>${row["Review Status"]}</td>
-                    <td>${row["Completion Date"]}</td>
-                    <td>${row["Timeline (Days)"]}</td>
-                    <td>${row.IR}</td>
-                    <td>${row["No. of Jiras"]}</td>
-                `;
-                tableBody.appendChild(tr);
-            }
-            document.getElementById("dataTable").style.display = data.length ? "table" : "none";
-            document.getElementById("totalCount").textContent = `Total: ${data.length}`;
+        # Step 4: Add today's date column with counts
+        today_str = datetime.today().strftime('%d-%B-%Y')
+        df_excel[today_str] = df_excel['Project'].map(df_csv.set_index('Project')['Count']).fillna(0).astype(int)
 
-            // Update status counts
-            const approvedCount = data.filter(row => row["Review Status"] === "Approved").length;
-            const approvedWithExceptionCount = data.filter(row => row["Review Status"] === "Approved with Exception").length;
-            const rejectedCount = data.filter(row => row["Review Status"] === "Rejected").length;
-            document.getElementById("statusCounts").textContent = 
-                `Approved Count: ${approvedCount} | Approved with Exception Count: ${approvedWithExceptionCount} | Rejected Count: ${rejectedCount}`;
-        }
+        # Step 5: Save Excel without formatting
+        df_excel.to_excel(excel_file, index=False)
 
-        function exportToExcel() {
-            if (!tableData.length) {
-                showMessage("No data to export.", "error");
-                return;
-            }
+        # Step 6: Open Excel for formatting
+        wb = load_workbook(excel_file)
+        ws = wb.active
 
-            const date1 = document.getElementById("date1").value;
-            const date2 = document.getElementById("date2").value;
-            const headers = ["Patch", "Creation Date", "Status", "Review Status", "Completion Date", "Timeline (Days)", "IR", "No. of Jiras"];
-            const exportData = tableData.map(row => ({
-                Patch: row.Patch,
-                "Creation Date": row["Creation Date"],
-                Status: row.Status,
-                "Review Status": row["Review Status"],
-                "Completion Date": row["Completion Date"],
-                "Timeline (Days)": row["Timeline (Days)"],
-                IR: row.IR,
-                "No. of Jiras": row["No. of Jiras"]
-            }));
+        green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
 
-            // Generate XLSX content
-            const rows = [headers, ...exportData.map(row => headers.map(header => row[header] || ""))];
-            const worksheetXml = `
-                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-                    <sheetData>
-                        ${rows.map((row, rowIndex) => `
-                            <row r="${rowIndex + 1}">
-                                ${row.map((cell, colIndex) => `
-                                    <c r="${String.fromCharCode(65 + colIndex)}${rowIndex + 1}" t="inlineStr">
-                                        <is><t>${cell.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</t></is>
-                                    </c>
-                                `).join("")}
-                            </row>
-                        `).join("")}
-                    </sheetData>
-                </worksheet>
-            `;
-            const workbookXml = `
-                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-                    <sheets>
-                        <sheet name="Patches" sheetId="1" r:id="rId1"/>
-                    </sheets>
-                </workbook>
-            `;
-            const contentTypesXml = `
-                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-                    <Default Extension="xml" ContentType="application/xml"/>
-                    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-                    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-                </Types>
-            `;
-            const relsXml = `
-                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-                    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-                </Relationships>
-            `;
-            const rootRelsXml = `
-                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-                    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-                </Relationships>
-            `;
+        # Highlight 0s and apply borders
+        for row in range(1, ws.max_row + 1):
+            for col in range(1, ws.max_column + 1):
+                cell = ws.cell(row=row, column=col)
+                if isinstance(cell.value, int) and cell.value == 0 and col >= 3:
+                    cell.fill = green_fill
+                cell.border = thin_border
 
-            // Create ZIP structure
-            const zip = {
-                "xl/workbook.xml": workbookXml,
-                "xl/worksheets/sheet1.xml": worksheetXml,
-                "[Content_Types].xml": contentTypesXml,
-                "xl/_rels/workbook.xml.rels": relsXml,
-                "_rels/.rels": rootRelsXml
-            };
+        def merge_and_label(start_row, end_row, name):
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+            cell = ws.cell(row=start_row, column=1)
+            cell.value = name
+            cell.fill = yellow_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+            for row in range(start_row, end_row + 1):
+                ws.cell(row=row, column=1).border = thin_border
 
-            // Simple base64 encoding for ZIP (minimal implementation)
-            function createZipBase64(files) {
-                // This is a simplified ZIP structure; in practice, you'd need a proper ZIP library for full compatibility
-                // For simplicity, we'll encode the files as a data URI, but note this is basic and may not work in all Excel versions
-                const xmlContent = Object.entries(files).map(([path, content]) => {
-                    return `--BOUNDARY\nContent-Type: application/octet-stream\nContent-Disposition: form-data; name="${path}"\n\n${content}\n`;
-                }).join("");
-                return `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${btoa(xmlContent)}`;
-            }
+        merge_and_label(2, 12, "A")
+        merge_and_label(13, 21, "B")
+        merge_and_label(22, 32, "C")
 
-            // Download the file
-            const filename = `patches_completed_${date1}-${date2}.xlsx`;
-            const link = document.createElement("a");
-            link.href = createZipBase64(zip);
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
+        wb.save(excel_file)
 
-        async function fetchAndDisplay() {
-            const date1Str = document.getElementById("date1").value;
-            const date2Str = document.getElementById("date2").value;
+        # Step 7: Export cleaned Excel data to PNG
+        df_clean = pd.read_excel(excel_file).dropna(how='all', axis=1).dropna(how='all', axis=0)
+        fig, ax = plt.subplots(figsize=(min(20, 0.5 * len(df_clean.columns)), 0.4 * len(df_clean)))
+        ax.axis('off')
+        table = ax.table(cellText=df_clean.values, colLabels=df_clean.columns, cellLoc='center', loc='center')
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.5)
+        plt.tight_layout()
+        plt.savefig(image_file, bbox_inches='tight', dpi=300)
+        plt.close()
 
-            const date1 = validateDate(date1Str);
-            const date2 = validateDate(date2Str);
+        messagebox.showinfo("Success", f"Completed...'!")
 
-            if (!date1 || !date2) {
-                showMessage("Invalid date format. Use YYYY-MM-DD.", "error");
-                return;
-            }
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
 
-            if (date1 > date2) {
-                showMessage("Start date must be before or equal to end date.", "error");
-                return;
-            }
+# GUI
+root = tk.Tk()
+root.title("Out of SLA Jira Count Utility")
 
-            showLoadingModal(true);
-            document.getElementById("exportButton").disabled = true;
-            document.getElementById("totalCount").textContent = "Total: 0";
-            document.getElementById("statusCounts").textContent = "Approved Count: 0 | Approved with Exception Count: 0 | Rejected Count: 0";
+frame = tk.Frame(root, padx=20, pady=20)
+frame.pack()
 
-            // Adjust dates for midnight to midnight (inclusive)
-            date1.setHours(0, 0, 0, 0);
-            date2.setHours(23, 59, 59, 999);
+label = tk.Label(frame, text="Fetch Out of SLA Jira Count", font=('Arial', 12))
+label.pack(pady=10)
 
-            const engagements = await fetchEngagements(date1, date2);
-            if (!engagements.length) {
-                showLoadingModal(false);
-                showMessage("No engagements found for the selected date range with tag 'patches' and status 'Completed'.", "info");
-                return;
-            }
+button = tk.Button(frame, text="Start", command=process_files, font=('Arial', 12), bg="lightblue")
+button.pack(pady=10)
 
-            tableData = processEngagements(engagements, date1, date2);
-            await populateJiraCounts(tableData);
-            displayInTable(tableData);
-            showLoadingModal(false);
-            document.getElementById("exportButton").disabled = !tableData.length;
-        }
-    </script>
-</body>
-</html>
+root.mainloop()
