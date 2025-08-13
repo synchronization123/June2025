@@ -1,171 +1,137 @@
 import pandas as pd
-import requests
-import os
-from openpyxl import load_workbook
-from openpyxl.styles import PatternFill, Alignment, Border, Side
-from datetime import datetime, timedelta
-import tkinter as tk
-from tkinter import messagebox
-import matplotlib.pyplot as plt
+from jira import JIRA
+from datetime import datetime, date
 import calendar
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
-def fetch_jira_data():
-    try:
-        # Clear old C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv
-        with open('C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv', 'w') as f:
-            f.write('')
+# Configure JIRA connection (replace with your actual details)
+jira_url = 'https://your-jira-instance.atlassian.net'  # Your JIRA instance URL
+username = 'your-email@example.com'  # Your JIRA username (email)
+api_token = 'your-api-token'  # Your JIRA API token
 
-        # Compute end of current month
-        today = datetime.today()
-        year, month = today.year, today.month
-        _, last_day_of_month = calendar.monthrange(year, month)
-        end_date = datetime(year, month, last_day_of_month)
+# Connect to JIRA
+jira = JIRA(server=jira_url, basic_auth=(username, api_token))
 
-        # SLA days
-        slas_standard = {"Critical": 15, "High": 30, "Medium": 90, "Low": 365}
-        slas_special = {"Critical": 184, "High": 214, "Medium": 274, "Low": 549}
+# Find the field ID for 'Severity'
+fields = jira.fields()
+severity_field = next((f['id'] for f in fields if f['name'] == 'Severity'), None)
+if severity_field is None:
+    raise ValueError("Custom field 'Severity' not found.")
 
-        # Calculate threshold dates
-        def calc_threshold(ed, days):
-            return (ed - timedelta(days=days)).strftime("%Y-%m-%d")
+# The JQL query
+jql = '(component in (Security, appsecurity) and component not in (drmc") and issuetype not in (epic, Sub-task) and project in (crm, ghi, hjf) and issuetype not in ("Spike/Task", Epic, Story, Sub-task) and component not in (dfd, uukj) and labels not in (yuit) and (Severity in (Critical) and created <= -15d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= -30d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= -90d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= -365d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))'
 
-        t_std_crit = calc_threshold(end_date, slas_standard["Critical"])
-        t_std_high = calc_threshold(end_date, slas_standard["High"])
-        t_std_med = calc_threshold(end_date, slas_standard["Medium"])
-        t_std_low = calc_threshold(end_date, slas_standard["Low"])
+# Function to fetch all issues (pagination)
+def get_all_issues(jql, fields):
+    start = 0
+    max_results = 100
+    all_issues = []
+    while True:
+        issues = jira.search_issues(jql, startAt=start, maxResults=max_results, fields=fields)
+        if not issues:
+            break
+        all_issues.extend(issues)
+        start += len(issues)
+    return all_issues
 
-        t_sp_crit = calc_threshold(end_date, slas_special["Critical"])
-        t_sp_high = calc_threshold(end_date, slas_special["High"])
-        t_sp_med = calc_threshold(end_date, slas_special["Medium"])
-        t_sp_low = calc_threshold(end_date, slas_special["Low"])
+# Fetch issues
+fields_to_fetch = 'project,key,created,' + severity_field
+issues = get_all_issues(jql, fields_to_fetch)
 
-        # Build dynamic JQL
-        jql = f'''
-        (component in (Security, appsecurity) and component not in ("drmc") and issuetype not in (epic, Sub-task) and project in (crm, ghi, hjf) and issuetype not in ("Spike/Task", Epic, Story, Sub-task) and component not in (dfd, uukj) and labels not in (yuit) and (Severity in (Critical) and created <= "{t_std_crit}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= "{t_std_high}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= "{t_std_med}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= "{t_std_low}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))
-        OR
-        (labels in (fgfg) and project in (fgf) and issuetype not in ("Spike/Task", Epic, Story, task) and component not in (sdsdd) and (Severity in (Critical) and created <= "{t_sp_crit}" and status not in (Done, Retrospected) or Severity in (High) and created <= "{t_sp_high}" and status not in (Done, Retrospected) or Severity in (Medium) and created <= "{t_sp_med}" and status not in (Done, Retrospected) or Severity in (Low, Informational) and created <= "{t_sp_low}" and status not in (Done, Retrospected)) and (Severity in (Critical) and created <= "{t_std_crit}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= "{t_std_high}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= "{t_std_med}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= "{t_std_low}" and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))
-        '''
+# Extract data
+data = []
+for issue in issues:
+    project_name = issue.fields.project.name
+    issue_key = issue.key
+    # Parse created datetime and format to MM/DD/YYYY
+    created_str = datetime.strptime(issue.fields.created, '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%m/%d/%Y')
+    # Get severity value
+    severity_obj = getattr(issue.fields, severity_field, None)
+    severity = severity_obj.value if severity_obj else ''
+    data.append({
+        'Project name': project_name,
+        'Issue key': issue_key,
+        'Created (MM/DD/YYYY)': created_str,
+        'Custom field (Severity)': severity
+    })
 
-        # Jira API Setup
-        url = 'https://jira.demo.com/rest/api/2/search'
-        headers = {
-            "Authorization": "Bearer hjghjjghjgjhgjh",
-            "Content-Type": "application/json"
-        }
+# Create DataFrame
+df = pd.DataFrame(data)
 
-        params = {
-            'jql': jql,
-            'maxResults': 1000
-        }
+# Calculate end of current month
+current_date = date.today()
+_, last_day = calendar.monthrange(current_date.year, current_date.month)
+end_of_month = date(current_date.year, current_date.month, last_day)
+end_of_month_str = end_of_month.strftime('%m/%d/%Y')
 
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
+# Add 'End of Month Date' column
+df['End of Month Date'] = end_of_month_str
 
-        # Extract project names from issues
-        projects = [issue['fields']['project']['name'] for issue in data['issues']]
-        df = pd.DataFrame(projects, columns=['Project'])
-        df_count = df['Project'].value_counts().reset_index()
-        df_count.columns = ['Project', 'Count']
+# Calculate Aging
+df['Created_dt'] = pd.to_datetime(df['Created (MM/DD/YYYY)'], format='%m/%d/%Y')
+df['End of Month_dt'] = pd.to_datetime(df['End of Month Date'], format='%m/%d/%Y')
+df['Aging'] = (df['End of Month_dt'] - df['Created_dt']).dt.days
 
-        # Save as C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv
-        df_count.to_csv('C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv', index=False)
+# Function to determine SLA
+def get_sla(row):
+    severity = row['Custom field (Severity)'].lower()
+    aging = row['Aging']
+    if severity == 'critical' and aging > 15:
+        return 'Out of SLA'
+    elif severity == 'high' and aging > 30:
+        return 'Out of SLA'
+    elif severity == 'medium' and aging > 90:
+        return 'Out of SLA'
+    elif severity in ('low', 'informational', '') and aging > 365:
+        return 'Out of SLA'
+    else:
+        return ''
 
-    except Exception as e:
-        messagebox.showerror("Jira Fetch Error", str(e))
-        return False
+# Add 'SLA' column
+df['SLA'] = df.apply(get_sla, axis=1)
 
-    return True
+# Select final columns
+df = df[['Project name', 'Issue key', 'Created (MM/DD/YYYY)', 'Custom field (Severity)', 'End of Month Date', 'Aging', 'SLA']]
 
-def process_files():
-    try:
-        # Step 1: Fetch Jira data first
-        if not fetch_jira_data():
-            return
+# Save to Excel
+df.to_excel('all_outofsla_jiras.xlsx', index=False)
 
-        # Step 2: Load dailycount
-        csv_file = 'C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\dailycount.csv'
-        excel_file = 'C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\project.xlsx'
-        image_file = 'C:\\Users\\firstname.lastname\\OneDrive - demo\\Desktop\\Daily-Jira-Count\\count.png'
+# Now update project.xlsx
+# Get counts of 'Out of SLA' per project
+sla_counts = df[df['SLA'] == 'Out of SLA'].groupby('Project name').size().reset_index(name='count')
+count_dict = dict(zip(sla_counts['Project name'], sla_counts['count']))
 
-        df_csv = pd.read_csv(csv_file)
+# Load workbook
+wb = openpyxl.load_workbook('project.xlsx')
+ws = wb.active
 
-        # Step 3: Load Excel
-        df_excel = pd.read_excel(excel_file)
+# Find the last column and add new column
+max_col = ws.max_column
+new_col = max_col + 1
 
-        # Step 4: Add today's date column with counts
-        today_str = datetime.today().strftime('%d-%B-%Y')
-        df_excel[today_str] = df_excel['Project'].map(df_csv.set_index('Project')['Count']).fillna(0).astype(int)
+# Today's date string for column header
+today_str = current_date.strftime('%d-%B-%Y')
 
-        # Step 5: Save Excel without formatting
-        df_excel.to_excel(excel_file, index=False)
+# Set header bold
+header_cell = ws.cell(row=1, column=new_col, value=today_str)
+header_cell.font = Font(bold=True)
 
-        # Step 6: Open Excel for formatting
-        wb = load_workbook(excel_file)
-        ws = wb.active
+# Update counts starting from row 2 (assuming headers in row 1)
+for row in range(2, ws.max_row + 1):
+    project_name = ws.cell(row=row, column=2).value  # Column B = 2
+    if project_name:
+        count = count_dict.get(project_name, 0)
+        cell = ws.cell(row=row, column=new_col, value=count)
+        cell.alignment = Alignment(horizontal='center')
+        if count == 0:
+            cell.fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
 
-        green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-        center_align = Alignment(horizontal="center", vertical="center")
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
+# Center align all values except project names (column B)
+for col in range(1, new_col + 1):
+    if col != 2:  # Skip column B
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=col).alignment = Alignment(horizontal='center')
 
-        # Highlight 0s and apply borders
-        for row in range(1, ws.max_row + 1):
-            for col in range(1, ws.max_column + 1):
-                cell = ws.cell(row=row, column=col)
-                if isinstance(cell.value, int) and cell.value == 0 and col >= 3:
-                    cell.fill = green_fill
-                cell.border = thin_border
-
-        def merge_and_label(start_row, end_row, name):
-            ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
-            cell = ws.cell(row=start_row, column=1)
-            cell.value = name
-            cell.fill = yellow_fill
-            cell.alignment = center_align
-            cell.border = thin_border
-            for row in range(start_row, end_row + 1):
-                ws.cell(row=row, column=1).border = thin_border
-
-        merge_and_label(2, 12, "A")
-        merge_and_label(13, 21, "B")
-        merge_and_label(22, 32, "C")
-
-        wb.save(excel_file)
-
-        # Step 7: Export cleaned Excel data to PNG
-        df_clean = pd.read_excel(excel_file).dropna(how='all', axis=1).dropna(how='all', axis=0)
-        fig, ax = plt.subplots(figsize=(min(20, 0.5 * len(df_clean.columns)), 0.4 * len(df_clean)))
-        ax.axis('off')
-        table = ax.table(cellText=df_clean.values, colLabels=df_clean.columns, cellLoc='center', loc='center')
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 1.5)
-        plt.tight_layout()
-        plt.savefig(image_file, bbox_inches='tight', dpi=300)
-        plt.close()
-
-        messagebox.showinfo("Success", f"Completed...'!")
-
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
-
-# GUI
-root = tk.Tk()
-root.title("Out of SLA Jira Count Utility")
-
-frame = tk.Frame(root, padx=20, pady=20)
-frame.pack()
-
-label = tk.Label(frame, text="Fetch Out of SLA Jira Count", font=('Arial', 12))
-label.pack(pady=10)
-
-button = tk.Button(frame, text="Start", command=process_files, font=('Arial', 12), bg="lightblue")
-button.pack(pady=10)
-
-root.mainloop()
+# Save the updated workbook
+wb.save('project.xlsx')
