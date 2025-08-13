@@ -1,54 +1,56 @@
 import pandas as pd
-from jira import JIRA
+import requests
 from datetime import datetime, date
 import calendar
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
-# Configure JIRA connection (replace with your actual details)
-jira_url = 'https://your-jira-instance.atlassian.net'  # Your JIRA instance URL
-username = 'your-email@example.com'  # Your JIRA username (email)
-api_token = 'your-api-token'  # Your JIRA API token
+# JIRA configuration
+jira_url = 'https://demo.jira.com'  # JIRA instance URL
+api_token = 'your-api-token'  # Replace with your JIRA API token
+headers = {
+    'Authorization': f'Bearer {api_token}',
+    'Content-Type': 'application/json'
+}
 
-# Connect to JIRA
-jira = JIRA(server=jira_url, basic_auth=(username, api_token))
-
-# Find the field ID for 'Severity'
-fields = jira.fields()
-severity_field = next((f['id'] for f in fields if f['name'] == 'Severity'), None)
-if severity_field is None:
-    raise ValueError("Custom field 'Severity' not found.")
-
-# The JQL query
-jql = '(component in (Security, appsecurity) and component not in (drmc") and issuetype not in (epic, Sub-task) and project in (crm, ghi, hjf) and issuetype not in ("Spike/Task", Epic, Story, Sub-task) and component not in (dfd, uukj) and labels not in (yuit) and (Severity in (Critical) and created <= -15d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= -30d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= -90d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= -365d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))'
+# JQL query
+jql = '(component in (Security, appsecurity) and component not in (drmc) and issuetype not in (epic, "Sub-task") and project in (crm, ghi, hjf) and issuetype not in ("Spike/Task", Epic, Story, "Sub-task") and component not in (dfd, uukj) and labels not in (yuit) and (Severity in (Critical) and created <= -15d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= -30d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= -90d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= -365d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))'
 
 # Function to fetch all issues (pagination)
 def get_all_issues(jql, fields):
-    start = 0
-    max_results = 100
+    url = f'{jira_url}/rest/api/3/search'
+    params = {
+        'jql': jql,
+        'fields': fields,
+        'maxResults': 100,
+        'startAt': 0
+    }
     all_issues = []
     while True:
-        issues = jira.search_issues(jql, startAt=start, maxResults=max_results, fields=fields)
-        if not issues:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
+        all_issues.extend(data['issues'])
+        if params['startAt'] + len(data['issues']) >= data['total']:
             break
-        all_issues.extend(issues)
-        start += len(issues)
+        params['startAt'] += len(data['issues'])
     return all_issues
 
 # Fetch issues
-fields_to_fetch = 'project,key,created,' + severity_field
+severity_field = 'customfield_13901'  # Updated to use the specific field ID
+fields_to_fetch = f'project,key,created,{severity_field}'
 issues = get_all_issues(jql, fields_to_fetch)
 
 # Extract data
 data = []
 for issue in issues:
-    project_name = issue.fields.project.name
-    issue_key = issue.key
+    project_name = issue['fields']['project']['name']
+    issue_key = issue['key']
     # Parse created datetime and format to MM/DD/YYYY
-    created_str = datetime.strptime(issue.fields.created, '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%m/%d/%Y')
+    created_str = datetime.strptime(issue['fields']['created'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%m/%d/%Y')
     # Get severity value
-    severity_obj = getattr(issue.fields, severity_field, None)
-    severity = severity_obj.value if severity_obj else ''
+    severity_data = issue['fields'].get(severity_field)
+    severity = severity_data['value'] if severity_data and isinstance(severity_data, dict) and 'value' in severity_data else ''
     data.append({
         'Project name': project_name,
         'Issue key': issue_key,
@@ -60,7 +62,7 @@ for issue in issues:
 df = pd.DataFrame(data)
 
 # Calculate end of current month
-current_date = date.today()
+current_date = date.today()  # Today's date: August 13, 2025
 _, last_day = calendar.monthrange(current_date.year, current_date.month)
 end_of_month = date(current_date.year, current_date.month, last_day)
 end_of_month_str = end_of_month.strftime('%m/%d/%Y')
@@ -75,7 +77,7 @@ df['Aging'] = (df['End of Month_dt'] - df['Created_dt']).dt.days
 
 # Function to determine SLA
 def get_sla(row):
-    severity = row['Custom field (Severity)'].lower()
+    severity = row['Custom field (Severity)'].lower() if row['Custom field (Severity)'] else ''
     aging = row['Aging']
     if severity == 'critical' and aging > 15:
         return 'Out of SLA'
@@ -97,7 +99,7 @@ df = df[['Project name', 'Issue key', 'Created (MM/DD/YYYY)', 'Custom field (Sev
 # Save to Excel
 df.to_excel('all_outofsla_jiras.xlsx', index=False)
 
-# Now update project.xlsx
+# Update project.xlsx
 # Get counts of 'Out of SLA' per project
 sla_counts = df[df['SLA'] == 'Out of SLA'].groupby('Project name').size().reset_index(name='count')
 count_dict = dict(zip(sla_counts['Project name'], sla_counts['count']))
@@ -111,11 +113,12 @@ max_col = ws.max_column
 new_col = max_col + 1
 
 # Today's date string for column header
-today_str = current_date.strftime('%d-%B-%Y')
+today_str = current_date.strftime('%d-%B-%Y')  # e.g., 13-August-2025
 
 # Set header bold
 header_cell = ws.cell(row=1, column=new_col, value=today_str)
 header_cell.font = Font(bold=True)
+header_cell.alignment = Alignment(horizontal='center')
 
 # Update counts starting from row 2 (assuming headers in row 1)
 for row in range(2, ws.max_row + 1):
@@ -131,7 +134,8 @@ for row in range(2, ws.max_row + 1):
 for col in range(1, new_col + 1):
     if col != 2:  # Skip column B
         for row in range(2, ws.max_row + 1):
-            ws.cell(row=row, column=col).alignment = Alignment(horizontal='center')
+            cell = ws.cell(row=row, column=col)
+            cell.alignment = Alignment(horizontal='center')
 
 # Save the updated workbook
 wb.save('project.xlsx')
