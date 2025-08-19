@@ -1,16 +1,17 @@
 import requests
 import pandas as pd
 import re
+from requests.auth import HTTPBasicAuth
 
 # Configuration
 jenkins_base_url = "https://jenkins.crm.com"
-token = "sjsjdjdjjd"  # Your Jenkins API token
+username = "your_jenkins_username"  # Replace with your actual Jenkins username
+password = "your_jenkins_password"  # Replace with your actual Jenkins password
 output_excel = "jenkins_report.xlsx"
 
 # Step 1: Fetch Jenkins jobs names and URLs
 api_url = f"{jenkins_base_url}/api/json?tree=jobs[name,url]"
-headers = {"Authorization": f"Bearer {token}"}
-response = requests.get(api_url, headers=headers)
+response = requests.get(api_url, auth=HTTPBasicAuth(username, password))
 
 if response.status_code != 200:
     raise Exception(f"Failed to fetch jobs: {response.status_code} - {response.text}")
@@ -33,7 +34,7 @@ for job in jobs:
 
     # Step 2-4: Fetch console text for the last successful build on develop branch
     console_url = f"{jenkins_base_url}/job/{name}/job/develop/lastSuccessfulBuild/consoleText"
-    console_response = requests.get(console_url, headers=headers)
+    console_response = requests.get(console_url, auth=HTTPBasicAuth(username, password))
 
     if console_response.status_code != 200:
         print(f"Warning: Failed to fetch console text for {name}: {console_response.status_code}")
