@@ -25,15 +25,18 @@ results = []
 # Process each job
 for job in jobs:
     name = job['name']
+    url = job['url']
     job_result = {
         "Job Name": name,
+        "Url": url,
         "Sonarqube": "not found",
         "Dependency Track": "No",
         "Bitbucket": "not found"
     }
 
     # Step 2-4: Fetch console text for the last successful build on develop branch
-    console_url = f"{jenkins_base_url}/job/{name}/job/develop/lastSuccessfulBuild/consoleText"
+    # Construct console_url using the job's url
+    console_url = f"{url}job/develop/lastSuccessfulBuild/consoleText"
     console_response = requests.get(console_url, auth=HTTPBasicAuth(username, password))
 
     if console_response.status_code != 200:
