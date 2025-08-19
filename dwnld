@@ -21,11 +21,14 @@ jobs = data.get('jobs', [])
 
 # Prepare results list
 results = []
+total_jobs = len(jobs)
 
-# Process each job
-for job in jobs:
+# Process each job with progress indicator
+for index, job in enumerate(jobs, 1):
     name = job['name']
     url = job['url']
+    print(f"Processing job {index}/{total_jobs}: {name}")
+    
     job_result = {
         "Job Name": name,
         "Url": url,
@@ -72,4 +75,4 @@ for job in jobs:
 # Create DataFrame and export to Excel
 df = pd.DataFrame(results)
 df.to_excel(output_excel, index=False)
-print(f"Report generated: {output_excel}")
+print(f"\nReport generated: {output_excel}")
