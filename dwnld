@@ -1,151 +1,71 @@
-import pandas as pd
 import requests
-from datetime import datetime, date
-import calendar
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import pandas as pd
+import re
 
-# JIRA configuration
-jira_url = 'https://demo.jira.com'  # JIRA instance URL
-api_token = 'your-api-token'  # Replace with your JIRA API token
-headers = {
-    'Authorization': f'Bearer {api_token}',
-    'Content-Type': 'application/json'
-}
+# Configuration
+jenkins_base_url = "https://jenkins.crm.com"
+token = "sjsjdjdjjd"  # Your Jenkins API token
+output_excel = "jenkins_report.xlsx"
 
-# JQL query
-jql = '(component in (Security, appsecurity) and component not in (drmc) and issuetype not in (epic, "Sub-task") and project in (crm, ghi, hjf) and issuetype not in ("Spike/Task", Epic, Story, "Sub-task") and component not in (dfd, uukj) and labels not in (yuit) and (Severity in (Critical) and created <= -15d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (High) and created <= -30d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Medium) and created <= -90d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing") or Severity in (Low) and created <= -365d and status not in (Done, Retrospected, "Reporter Review", "Ready for Testing")))'
+# Step 1: Fetch Jenkins jobs names and URLs
+api_url = f"{jenkins_base_url}/api/json?tree=jobs[name,url]"
+headers = {"Authorization": f"Bearer {token}"}
+response = requests.get(api_url, headers=headers)
 
-# Function to fetch all issues (pagination)
-def get_all_issues(jql, fields):
-    url = f'{jira_url}/rest/api/3/search'
-    params = {
-        'jql': jql,
-        'fields': fields,
-        'maxResults': 100,
-        'startAt': 0
+if response.status_code != 200:
+    raise Exception(f"Failed to fetch jobs: {response.status_code} - {response.text}")
+
+data = response.json()
+jobs = data.get('jobs', [])
+
+# Prepare results list
+results = []
+
+# Process each job
+for job in jobs:
+    name = job['name']
+    job_result = {
+        "Job Name": name,
+        "Sonarqube": "not found",
+        "Dependency Track": "No",
+        "Bitbucket": "not found"
     }
-    all_issues = []
-    while True:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
-        all_issues.extend(data['issues'])
-        if params['startAt'] + len(data['issues']) >= data['total']:
-            break
-        params['startAt'] += len(data['issues'])
-    return all_issues
 
-# Fetch issues
-severity_field = 'customfield_13901'  # Using the specific field ID
-fields_to_fetch = f'project,key,created,{severity_field}'
-issues = get_all_issues(jql, fields_to_fetch)
+    # Step 2-4: Fetch console text for the last successful build on develop branch
+    console_url = f"{jenkins_base_url}/job/{name}/job/develop/lastSuccessfulBuild/consoleText"
+    console_response = requests.get(console_url, headers=headers)
 
-# Extract data
-data = []
-for issue in issues:
-    project_name = issue['fields']['project']['name']
-    issue_key = issue['key']
-    # Parse created datetime and format to MM/DD/YYYY
-    created_str = datetime.strptime(issue['fields']['created'], '%Y-%m-%dT%H:%M:%S.%f%z').strftime('%m/%d/%Y')
-    # Get severity value
-    severity_data = issue['fields'].get(severity_field)
-    severity = severity_data['value'] if severity_data and isinstance(severity_data, dict) and 'value' in severity_data else ''
-    data.append({
-        'Project name': project_name,
-        'Issue key': issue_key,
-        'Created (MM/DD/YYYY)': created_str,
-        'Custom field (Severity)': severity
-    })
+    if console_response.status_code != 200:
+        print(f"Warning: Failed to fetch console text for {name}: {console_response.status_code}")
+        results.append(job_result)
+        continue
 
-# Create DataFrame
-df = pd.DataFrame(data)
+    console_text = console_response.text
 
-# Calculate end of current month
-current_date = date.today()  # Today's date: August 13, 2025
-_, last_day = calendar.monthrange(current_date.year, current_date.month)
-end_of_month = date(current_date.year, current_date.month, last_day)
-end_of_month_str = end_of_month.strftime('%m/%d/%Y')
+    # Check for Dependency Track (anywhere in text)
+    if "The artifact was successfully published" in console_text:
+        job_result["Dependency Track"] = "Yes"
 
-# Add 'End of Month Date' column
-df['End of Month Date'] = end_of_month_str
+    # Parse lines for Sonarqube and Bitbucket
+    lines = console_text.split('\n')
+    for line in lines:
+        # Step 2: Check for Sonarqube
+        if "ANALYSIS SUCCESSFUL" in line and job_result["Sonarqube"] == "not found":
+            # Extract URL like https://sonar.crm.com... from the line
+            sonar_match = re.search(r'(https://sonar\.crm\.com[^\s]*)', line)
+            if sonar_match:
+                job_result["Sonarqube"] = sonar_match.group(1)
 
-# Calculate Aging
-df['Created_dt'] = pd.to_datetime(df['Created (MM/DD/YYYY)'], format='%m/%d/%Y')
-df['End of Month_dt'] = pd.to_datetime(df['End of Month Date'], format='%m/%d/%Y')
-df['Aging'] = (df['End of Month_dt'] - df['Created_dt']).dt.days
+        # Step 4: Check for Bitbucket
+        if "Cloning repository" in line and job_result["Bitbucket"] == "not found":
+            # Extract URL like https://bitbucket.crm.com... from the line
+            bitbucket_match = re.search(r'Cloning repository (https://bitbucket\.crm\.com[^\s]*)', line)
+            if bitbucket_match:
+                job_result["Bitbucket"] = bitbucket_match.group(1)
 
-# Function to determine SLA
-def get_sla(row):
-    severity = row['Custom field (Severity)'].lower() if row['Custom field (Severity)'] else ''
-    aging = row['Aging']
-    if severity == 'critical' and aging > 15:
-        return 'Out of SLA'
-    elif severity == 'high' and aging > 30:
-        return 'Out of SLA'
-    elif severity == 'medium' and aging > 90:
-        return 'Out of SLA'
-    elif severity in ('low', 'informational', '') and aging > 365:
-        return 'Out of SLA'
-    else:
-        return ''
+    results.append(job_result)
 
-# Add 'SLA' column
-df['SLA'] = df.apply(get_sla, axis=1)
-
-# Select final columns
-df = df[['Project name', 'Issue key', 'Created (MM/DD/YYYY)', 'Custom field (Severity)', 'End of Month Date', 'Aging', 'SLA']]
-
-# Save to Excel
-df.to_excel('all_outofsla_jiras.xlsx', index=False)
-
-# Update project.xlsx
-# Get counts of 'Out of SLA' per project
-sla_counts = df[df['SLA'] == 'Out of SLA'].groupby('Project name').size().reset_index(name='count')
-count_dict = dict(zip(sla_counts['Project name'], sla_counts['count']))
-
-# Load workbook
-wb = openpyxl.load_workbook('project.xlsx')
-ws = wb.active
-
-# Define border style
-border_style = Border(
-    left=Side(style='thin'),
-    right=Side(style='thin'),
-    top=Side(style='thin'),
-    bottom=Side(style='thin')
-)
-
-# Find the last column and add new column
-max_col = ws.max_column
-new_col = max_col + 1
-
-# Today's date string for column header
-today_str = current_date.strftime('%d-%B-%Y')  # e.g., 13-August-2025
-
-# Set header: bold, center-aligned, with border
-header_cell = ws.cell(row=1, column=new_col, value=today_str)
-header_cell.font = Font(bold=True)
-header_cell.alignment = Alignment(horizontal='center')
-header_cell.border = border_style
-
-# Update counts starting from row 2 (assuming headers in row 1)
-for row in range(2, ws.max_row + 1):
-    project_name = ws.cell(row=row, column=2).value  # Column B = 2
-    if project_name:
-        count = count_dict.get(project_name, 0)
-        cell = ws.cell(row=row, column=new_col, value=count)
-        cell.alignment = Alignment(horizontal='center')
-        cell.border = border_style  # Apply border to each cell
-        if count == 0:
-            cell.fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
-
-# Center align all values except project names (column B)
-for col in range(1, new_col + 1):
-    if col != 2:  # Skip column B (Project name)
-        for row in range(2, ws.max_row + 1):
-            cell = ws.cell(row=row, column=col)
-            cell.alignment = Alignment(horizontal='center')
-
-# Save the updated workbook
-wb.save('project.xlsx')
+# Create DataFrame and export to Excel
+df = pd.DataFrame(results)
+df.to_excel(output_excel, index=False)
+print(f"Report generated: {output_excel}")
