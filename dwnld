@@ -16,15 +16,32 @@ def save_to_excel(results, filename):
     df.to_excel(filename, index=False)
     print(f"Excel updated: {filename}")
 
-# Step 1: Fetch Jenkins jobs names and URLs
-api_url = f"{jenkins_base_url}/api/json?tree=jobs[name,url]"
-response = requests.get(api_url, auth=HTTPBasicAuth(username, password))
+# Function to recursively fetch all jobs (including nested/tied jobs)
+def fetch_all_jobs(url, auth, parent_path=""):
+    jobs_list = []
+    api_url = f"{url}/api/json?tree=jobs[name,url,jobs[name,url,jobs[name,url]]]"
+    try:
+        response = requests.get(api_url, auth=auth)
+        if response.status_code != 200:
+            print(f"Warning: Failed to fetch jobs from {url}: {response.status_code}")
+            return jobs_list
+        data = response.json()
+        for job in data.get('jobs', []):
+            name = job['name']
+            job_url = job['url']
+            full_name = f"{parent_path}{name}" if parent_path else name
+            jobs_list.append({"name": full_name, "url": job_url})
+            # Check for nested jobs (e.g., in folders or tied jobs)
+            if 'jobs' in job and job['jobs']:
+                nested_jobs = fetch_all_jobs(job_url, auth, f"{full_name}/")
+                jobs_list.extend(nested_jobs)
+    except Exception as e:
+        print(f"Error fetching jobs from {url}: {e}")
+    return jobs_list
 
-if response.status_code != 200:
-    raise Exception(f"Failed to fetch jobs: {response.status_code} - {response.text}")
-
-data = response.json()
-jobs = data.get('jobs', [])
+# Step 1: Fetch all Jenkins jobs (including nested)
+auth = HTTPBasicAuth(username, password)
+jobs = fetch_all_jobs(jenkins_base_url, auth)
 
 # Initialize results list
 results = []
@@ -74,7 +91,7 @@ for index, job in enumerate(jobs, 1):
 
     # Step 2-4: Fetch console text for the last successful build on develop branch
     console_url = f"{url}job/develop/lastSuccessfulBuild/consoleText"
-    console_response = requests.get(console_url, auth=HTTPBasicAuth(username, password))
+    console_response = requests.get(console_url, auth=auth)
 
     if console_response.status_code != 200:
         print(f"Warning: Failed to fetch console text for {name}: {console_response.status_code}")
