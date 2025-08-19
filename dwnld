@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import re
+import os
 from requests.auth import HTTPBasicAuth
 
 # Configuration
@@ -8,6 +9,12 @@ jenkins_base_url = "https://jenkins.crm.com"
 username = "your_jenkins_username"  # Replace with your actual Jenkins username
 password = "your_jenkins_password"  # Replace with your actual Jenkins password
 output_excel = "jenkins_report.xlsx"
+
+# Function to save results to Excel
+def save_to_excel(results, filename):
+    df = pd.DataFrame(results)
+    df.to_excel(filename, index=False)
+    print(f"Excel updated: {filename}")
 
 # Step 1: Fetch Jenkins jobs names and URLs
 api_url = f"{jenkins_base_url}/api/json?tree=jobs[name,url]"
@@ -19,16 +26,44 @@ if response.status_code != 200:
 data = response.json()
 jobs = data.get('jobs', [])
 
-# Prepare results list
+# Initialize results list
 results = []
-total_jobs = len(jobs)
+
+# Check if Excel file exists and load existing data
+existing_jobs = set()
+if os.path.exists(output_excel):
+    try:
+        existing_df = pd.read_excel(output_excel)
+        results = existing_df.to_dict('records')  # Convert to list of dictionaries
+        existing_jobs = set(existing_df['Job Name'].tolist())
+        print(f"Found existing Excel with {len(existing_jobs)} jobs processed.")
+        
+        # Prompt user to choose whether to continue or start over
+        choice = input("Do you want to (1) start from the beginning (overwrite Excel) or (2) continue where stopped? Enter 1 or 2: ").strip()
+        if choice == "1":
+            results = []  # Clear results to start fresh
+            existing_jobs = set()
+        elif choice != "2":
+            print("Invalid choice. Defaulting to continue where stopped.")
+    except Exception as e:
+        print(f"Error reading existing Excel: {e}. Starting from the beginning.")
+        results = []
+        existing_jobs = set()
+else:
+    print("No existing Excel found. Starting from the beginning.")
 
 # Process each job with progress indicator
+total_jobs = len(jobs)
 for index, job in enumerate(jobs, 1):
     name = job['name']
-    url = job['url']
-    print(f"Processing job {index}/{total_jobs}: {name}")
     
+    # Skip jobs already processed if continuing
+    if name in existing_jobs:
+        print(f"Skipping job {index}/{total_jobs}: {name} (already processed)")
+        continue
+    
+    print(f"Processing job {index}/{total_jobs}: {name}")
+    url = job['url']
     job_result = {
         "Job Name": name,
         "Url": url,
@@ -38,18 +73,18 @@ for index, job in enumerate(jobs, 1):
     }
 
     # Step 2-4: Fetch console text for the last successful build on develop branch
-    # Construct console_url using the job's url
     console_url = f"{url}job/develop/lastSuccessfulBuild/consoleText"
     console_response = requests.get(console_url, auth=HTTPBasicAuth(username, password))
 
     if console_response.status_code != 200:
         print(f"Warning: Failed to fetch console text for {name}: {console_response.status_code}")
         results.append(job_result)
+        save_to_excel(results, output_excel)  # Save progress
         continue
 
     console_text = console_response.text
 
-    # Check for Dependency Track (anywhere in text)
+    # Check for Dependency Track
     if "The artifact was successfully published" in console_text:
         job_result["Dependency Track"] = "Yes"
 
@@ -58,21 +93,17 @@ for index, job in enumerate(jobs, 1):
     for line in lines:
         # Step 2: Check for Sonarqube
         if "ANALYSIS SUCCESSFUL" in line and job_result["Sonarqube"] == "not found":
-            # Extract URL like https://sonar.crm.com... from the line
             sonar_match = re.search(r'(https://sonar\.crm\.com[^\s]*)', line)
             if sonar_match:
                 job_result["Sonarqube"] = sonar_match.group(1)
 
         # Step 4: Check for Bitbucket
         if "Cloning repository" in line and job_result["Bitbucket"] == "not found":
-            # Extract URL like https://bitbucket.crm.com... from the line
             bitbucket_match = re.search(r'Cloning repository (https://bitbucket\.crm\.com[^\s]*)', line)
             if bitbucket_match:
                 job_result["Bitbucket"] = bitbucket_match.group(1)
 
     results.append(job_result)
+    save_to_excel(results, output_excel)  # Save progress after each job
 
-# Create DataFrame and export to Excel
-df = pd.DataFrame(results)
-df.to_excel(output_excel, index=False)
-print(f"\nReport generated: {output_excel}")
+print(f"\nReport generation complete: {output_excel}")
