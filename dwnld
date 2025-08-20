@@ -10,6 +10,13 @@ username = "your_jenkins_username"  # Replace with your actual Jenkins username
 password = "your_jenkins_password"  # Replace with your actual Jenkins password
 output_excel = "jenkins_report.xlsx"
 
+# List of SonarQube instances to check
+sonar_instances = [
+    r'https://sonar\.crm\.com[^\s]*',
+    r'https://sonarenterprise\.crm\.com[^\s]*',
+    r'https://crmsonar\.crm\.com[^\s]*'
+]
+
 # Function to save results to Excel
 def save_to_excel(results, filename):
     df = pd.DataFrame(results)
@@ -108,11 +115,13 @@ for index, job in enumerate(jobs, 1):
     # Parse lines for Sonarqube and Bitbucket
     lines = console_text.split('\n')
     for line in lines:
-        # Step 2: Check for Sonarqube
+        # Step 2: Check for Sonarqube (across all instances)
         if "ANALYSIS SUCCESSFUL" in line and job_result["Sonarqube"] == "not found":
-            sonar_match = re.search(r'(https://sonar\.crm\.com[^\s]*)', line)
-            if sonar_match:
-                job_result["Sonarqube"] = sonar_match.group(1)
+            for sonar_pattern in sonar_instances:
+                sonar_match = re.search(sonar_pattern, line)
+                if sonar_match:
+                    job_result["Sonarqube"] = sonar_match.group(0)
+                    break  # Use the first matching SonarQube URL
 
         # Step 4: Check for Bitbucket
         if "Cloning repository" in line and job_result["Bitbucket"] == "not found":
