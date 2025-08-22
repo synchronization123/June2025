@@ -1,541 +1,462 @@
 import requests
-import re
-import json
-import pygal
-from pygal.style import Style
-import io
-import pdfkit
+import pandas as pd
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import os
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-import hashlib
+import datetime
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, Toplevel
+import threading
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import logging
+from copy import deepcopy
 
-def save_html_report(report, filename):
-    with io.open(filename, "w", encoding="utf-8") as file:
-        file.write(report)
+# Set working directory to the script's directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
 
-def get_severity_color(severity):
-    if severity == "Critical":
-        return "#800000"  # Maroon
-    if severity == "High":
-        return "#ff0000"  # Red
-    elif severity == "Medium":
-        return "#ffa500"  # Orange
-    elif severity == "Low":
-        return "#ffff00"  # Yellow
-    elif severity == "Info":
-        return "#808080"  # Grey
-    else:
-        return "#ffffff"  # White (replacing transparent)
+# Create data folder if not exists
+data_folder = os.path.join(script_dir, 'data')
+try:
+    os.makedirs(data_folder, exist_ok=True)
+except Exception as e:
+    logging.error(f"Failed to create data folder: {e}")
 
-def strip_vulnerability_id(vulnerability_id):
-    if vulnerability_id is None or not isinstance(vulnerability_id, dict):
-        return "N/A"
-    vulnerability_id = vulnerability_id.get("vulnerability_id", "").strip("{'vulnerability_id': '").rstrip("'}")
-    return vulnerability_id
+# Set up logging to file and console
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(script_dir, 'trace_download.log')),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
-def generate_html_report(finding_data, report_name, start_date, end_date, prepared_by, reviewed_by, approved_by):
-    sorted_findings = sorted(finding_data, key=lambda x: ["Critical", "High", "Medium", "Low", "Info"].index(x["severity"])) if finding_data else []
-    
-    html_report = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>{report_name}</title>
-      <style>
-        @page {{
-          size: A4;
-          margin: 20mm;
-        }}
-        body {{
-          font-family: 'Aptos', Arial, sans-serif;
-          font-size: 14.67px;
-          line-height: 1.6;
-          margin: 0;
-          padding: 0;
-          background-color: #f9f9f9;
-          color: #333333;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }}
-        .container {{
-          max-width: 1000px;
-          margin: 0 auto;
-          background-color: #ffffff;
-          padding: 30px;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px #00000033;
-          page-break-inside: avoid;
-        }}
-        .cover-page {{
-          position: relative;
-          padding: 20px;
-          border-radius: 8px;
-          background-color: #f4faff;
-          margin-bottom: 30px;
-          page-break-inside: avoid;
-        }}
-        .logo-card {{
-          display: inline-block;
-          background-color: #ffffff;
-          padding: 10px;
-          border-radius: 4px;
-          box-shadow: 0 1px 5px #00000033;
-          margin-bottom: 20px;
-        }}
-        .logo {{
-          width: auto;
-          height: auto;
-        }}
-        h1, h2, h3 {{
-          font-family: 'Aptos Display', Arial, sans-serif;
-          font-size: 18.67px;
-          color: #1a3c5e;
-        }}
-        .report-heading {{
-          font-size: 28px;
-          font-weight: bold;
-          text-align: center;
-          margin-bottom: 20px;
-          color: #20a6d8;
-        }}
-        .finding-title {{
-          background-color: #20a6d8;
-          color: #ffffff;
-          padding: 12px;
-          border-radius: 5px;
-          margin: 0;
-        }}
-        .severity-box {{
-          display: inline-block;
-          padding: 8px 12px;
-          margin-bottom: 15px;
-          color: #ffffff;
-          border-radius: 4px;
-          font-weight: bold;
-        }}
-        .severity-critical {{
-          background-color: #800000;
-          color: #ffffff;
-        }}
-        .severity-high {{
-          background-color: #ff0000;
-          color: #ffffff;
-        }}
-        .severity-medium {{
-          background-color: #ffa500;
-          color: #ffffff;
-        }}
-        .severity-low {{
-          background-color: #ffff00;
-          color: #333333;
-        }}
-        .severity-info {{
-          background-color: #808080;
-          color: #ffffff;
-        }}
-        .hardcoded-line {{
-          border-top: 1px solid #dddddd;
-          margin: 15px 0;
-        }}
-        .step-image {{
-          border: 1px solid #cccccc;
-          padding: 5px;
-          margin-bottom: 15px;
-          width: 1000;
-          max-height: 800px;
-          border-radius: 4px;
-        }}
-        .steps_to_reproduce {{
-          list-style-type: none;
-          padding-left: 0;
-        }}
-        .steps_to_reproduce li {{
-          margin-bottom: 10px;
-          page-break-inside: avoid;
-        }}
-        table {{
-          border-collapse: collapse;
-          width: 100%;
-          margin: 20px 0;
-          background-color: #ffffff;
-          border: 1px solid #dddddd;
-          border-radius: 4px;
-          page-break-inside: avoid;
-        }}
-        th, td {{
-          padding: 12px;
-          text-align: left;
-          border-bottom: 1px solid #dddddd;
-        }}
-        th {{
-          background-color: #f4f4f4;
-          font-weight: bold;
-          color: #1a3c5e;
-        }}
-        .Sub-Title {{
-          font-size: 22px;
-          margin-bottom: 15px;
-          color: #20a6d8;
-        }}
-        .chart-container {{
-          text-align: center;
-          margin: 30px 0;
-          padding: 20px;
-          background-color: #ffffff;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px #00000033;
-          page-break-before: always;
-          page-break-inside: avoid;
-        }}
-        .no-findings {{
-          text-align: center;
-          color: #666666;
-          font-style: italic;
-          page-break-inside: avoid;
-        }}
-        .finding-border {{
-          padding: 15px;
-          margin-bottom: 20px;
-          border-radius: 8px;
-          background-color: #fafafa;
-          box-shadow: 0 1px 5px #00000033;
-          page-break-inside: avoid;
-        }}
-        .finding-border:first-of-type {{
-          margin-top: 0;
-          page-break-before: avoid;
-        }}
-        .finding-details h2 {{
-          margin-bottom: 0;
-          page-break-after: avoid;
-        }}
-        .finding-details {{
-          page-break-inside: avoid;
-          margin-top: 0;
-        }}
-        p {{
-          page-break-inside: avoid;
-          margin: 10px 0;
-        }}
-        a {{
-          color: #20a6d8;
-          text-decoration: none;
-        }}
-      </style>
-    </head>
-    <body>
-    <div class="container">
-      <div class="cover-page">
-        <div class="logo-card">
-          <img src="logo.png" class="logo" alt="Company Logo">
-        </div>
-        <h2 class="report-heading">{report_name}</h2>
-        <h1 style="text-align: center;">Application Security</h1>
-        <br>
-        <table>
-          <tr>
-            <th>Start Date:</th><td>{start_date}</td>
-          </tr>
-          <tr>
-            <th>End Date:</th><td>{end_date}</td> 
-          </tr>      
-          <tr>
-            <th>Prepared by:</th><td>{prepared_by}</td>
-          </tr>
-          <tr>
-            <th>Reviewed by:</th><td>{reviewed_by}</td>
-          </tr>
-        </table>
-      </div>
-    """
+class UtilityApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Contrast Traces Utility")
+        self.root.geometry("600x400")
 
-    severity_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
-    for finding in sorted_findings:
-        severity = finding["severity"]
-        severity_counts[severity] += 1
-    
-    custom_style = Style(
-        value_font_size=4,
-        colors=('#800000', '#ff0000', '#ffa500', '#ffff00', '#808080'),
-        background='#ffffff',
-        plot_background='#ffffff'
-    )
-    pie_chart = pygal.Pie(
-        width=400,
-        height=200,
-        print_values=True,
-        style=custom_style,
-        value_formatter=lambda x: f"({(x * 100 / sum(severity_counts.values())):.2f}%)" if sum(severity_counts.values()) > 0 else "(0%)"
-    )
-    pie_chart.title = "Findings by Severity"
-    for severity, count in severity_counts.items():
-        pie_chart.add(f"{severity}, ({count})", count)
+        # Button frame
+        self.button_frame = ttk.Frame(self.root)
+        self.button_frame.pack(pady=10)
+        self.fetch_button = ttk.Button(self.button_frame, text="Fetch", command=self.start_fetch)
+        self.fetch_button.pack()
 
-    chart_svg = pie_chart.render()
-    chart_svg = chart_svg.replace(b'\n', b' ')
-    chart_svg_str = chart_svg.decode("utf-8")
-    chart_svg_str = chart_svg_str.replace("b' '", "")
-    
-    html_report += f'<div class="chart-container">{chart_svg_str}</div>'
-        
-    severity_findings = {}
-    severity_colors = {
-        "Critical": {"background": "#800000", "font": "#ffffff"},
-        "High": {"background": "#ff0000", "font": "#ffffff"},
-        "Medium": {"background": "#ffa500", "font": "#ffffff"},
-        "Low": {"background": "#ffff00", "font": "#333333"},
-        "Info": {"background": "#808080", "font": "#ffffff"}
-    }
-    
-    for finding in sorted_findings:
-        severity = finding["severity"]
-        if severity not in severity_findings:
-            severity_findings[severity] = []
-        severity_findings[severity].append(finding)
+        # Log frame
+        self.log_frame = ttk.Frame(self.root)
+        self.log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.log_text = tk.Text(self.log_frame, height=20, width=70, state='disabled')
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(self.log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text['yscrollcommand'] = scrollbar.set
 
-    html_report += "<h2 id='top'>Findings Index</h2>"
-    severity_order = ["Critical", "High", "Medium", "Low", "Info"]
-    for severity in severity_order:
-        findings = severity_findings.get(severity, [])
-        if findings:
-            color = severity_colors.get(severity, {})
-            background_color = color.get("background", "#ffffff")
-            font_color = color.get("font", "#333333")
-            html_report += f"<h1 style='background-color: {background_color}; color: {font_color}; padding: 10px; border-radius: 4px; page-break-inside: avoid;'>{severity} Findings:</h1>"
-            html_report += "<ul style='page-break-inside: avoid;'>"
-            for i, finding in enumerate(findings, start=1):
-                finding_title = finding["title"]
-                html_report += f'<li><a href="#finding{i}" style="color: #20a6d8; text-decoration: none;">Finding {i}: {finding_title}</a></li>'
-            html_report += "</ul>"
-    
-    html_report += "<div class='finding-details'><h2>Findings Details</h2>"
-    
-    if not sorted_findings:
-        html_report += "<p class='no-findings'>No findings were identified during the test</p>"
-    else:
-        for i, finding in enumerate(sorted_findings, start=1):
-            finding_title = finding["title"]
-            vulnerability_id = finding["vulnerability_ids"][0] if finding["vulnerability_ids"] else "N/A"
-            vulnerability_id = strip_vulnerability_id(vulnerability_id)
-            description = finding["description"].replace("\r\n", "<br>") if finding["description"] else "N/A"
-            cvssv3 = finding["cvssv3"] if finding["cvssv3"] else "N/A"
-            cvssv3_score = finding["cvssv3_score"] if finding["cvssv3_score"] else "N/A"
-            severity = finding["severity"]
-            steps_to_reproduce = finding["steps_to_reproduce"] if finding["steps_to_reproduce"] else "N/A"
-            if isinstance(steps_to_reproduce, str):
-                steps_to_reproduce = steps_to_reproduce.replace("\r\n", "<br>")
-            mitigation = finding["mitigation"].replace("\r\n", "<br>") if finding["mitigation"] else "N/A"
-            impact = finding["impact"].replace("\r\n", "<br>") if finding["impact"] else "N/A"
-            
-            html_report += f"""
-            <div id="finding{i}" class="finding-border">
-              <h1 class="finding-title" id="finding{i}">Finding {i}: {finding_title}</h1>
-              <p><strong>Jira ID:</strong> {vulnerability_id}</p>
-              <hr class="hardcoded-line">
-              <p><strong>Description:</strong> {description}</p>
-              <hr class="hardcoded-line">
-              <p><strong>CVSSv3:</strong> {cvssv3}</p>
-              <hr class="hardcoded-line">
-              <p><strong>CVSSv3 Score:</strong> {cvssv3_score}</p>
-              <hr class="hardcoded-line">
-              <div class="severity-box severity-{severity.lower()}" style="background-color: {get_severity_color(severity)};">
-                <strong>Severity:</strong> {severity}
-              </div>
-              <hr class="hardcoded-line">
-              <p><strong>Impact:</strong> {impact}</p>
-              <hr class="hardcoded-line">
-              <p><strong>Mitigation:</strong> {mitigation}</p>
-              <hr class="hardcoded-line">
-              <p><strong>Steps to Reproduce:</strong></p>
-              <ul class="steps_to_reproduce">
-            """
+    def log(self, message):
+        logger.info(message)
+        self.log_text.configure(state='normal')
+        self.log_text.insert(tk.END, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {message}\n")
+        self.log_text.configure(state='disabled')
+        self.log_text.see(tk.END)
+        self.root.update_idletasks()
 
-            if isinstance(steps_to_reproduce, str):
-                for step in steps_to_reproduce.split("<br>"):
-                    if step.strip():
-                        img_regex = r"!\[\]\((https?://[^\s]+)\)"
-                        img_urls = re.findall(img_regex, step)
-                        for img_url in img_urls:
-                            step = step.replace(f"![]({img_url})", f'<img class="step-image" src="{img_url}" width="1000" style="max-height: 800px;"><br>')
-                        html_report += f"<li>{step}</li>"
-            else:
-                html_report += f"<li>{steps_to_reproduce}</li>"
+    def start_fetch(self):
+        self.fetch_button.config(state='disabled')
+        threading.Thread(target=self.run_logic, daemon=True).start()
 
-            html_report += "</ul><hr></div>"
-    
-    html_report += """
-    </div>
-    </div>
-    </body>
-    </html>
-    """
+    def show_final_xlsx_popup(self, final_file, app_aliases, traces_counts, date_formatted):
+        # Load Final.xlsx
+        try:
+            wb = openpyxl.load_workbook(final_file)
+            ws = wb.active
+        except Exception as e:
+            self.log(f"Error loading Final.xlsx for popup: {e}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to load Final.xlsx: {e}"))
+            return
 
-    return html_report
+        # Create popup window
+        popup = Toplevel(self.root)
+        popup.title("Final.xlsx Data")
+        popup.geometry("800x500")
 
-def download_images_and_update_html(html_filename, session_id):
-    image_folder = 'images'
-    cookie_name = 'sessionid'
-    cookie_domain = 'demo.defectdojo.org'
+        # Frame for Treeview and controls
+        tree_frame = ttk.Frame(popup)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-    # Create image folder
-    os.makedirs(image_folder, exist_ok=True)
+        # Treeview for displaying data
+        columns = ['Applications'] + [ws.cell(row=1, column=col).value for col in range(2, ws.max_column + 1)]
+        tree = ttk.Treeview(tree_frame, columns=columns, show='headings')
+        tree.pack(fill=tk.BOTH, expand=True)
 
-    # Set up session with manual cookie
-    session = requests.Session()
-    session.cookies.set(cookie_name, session_id, domain=cookie_domain)
+        # Set column headings and alignments
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, anchor='w' if col == 'Applications' else 'center', width=100)
 
-    # Parse HTML
-    with open(html_filename, 'r', encoding='utf-8') as f:
-        soup = BeautifulSoup(f, 'html.parser')
+        # Style for Treeview
+        style = ttk.Style()
+        style.configure("Treeview.Heading", font=('Helvetica', 10, 'bold'))
+        style.configure("Treeview", rowheight=25)
+        style.configure("Green.Treeview", background='#90EE90')
 
-    # Process images
-    for img_tag in soup.find_all('img'):
-        src = img_tag.get('src')
-        if not src or not src.startswith('http'):
-            continue
-
-        ext = '.png'
-        filename = hashlib.md5(src.encode()).hexdigest() + ext
-        local_path = os.path.join(image_folder, filename)
-
-        if not os.path.exists(local_path):
-            try:
-                resp = session.get(src, timeout=10)
-                if 'image' in resp.headers.get('Content-Type', ''):
-                    with open(local_path, 'wb') as f_out:
-                        f_out.write(resp.content)
-                    print(f"✅ Image saved: {src}")
+        # Insert data
+        total_row = None
+        for row in range(2, ws.max_row + 1):
+            values = []
+            tags = []
+            for col in range(1, ws.max_column + 1):
+                cell = ws.cell(row=row, column=col)
+                value = cell.value if cell.value is not None else ''
+                if col == 1:
+                    values.append(value)  # Application name
                 else:
-                    print(f"⚠️ Not an image (Content-Type: {resp.headers.get('Content-Type', '')})")
-                    continue
+                    if isinstance(value, (int, float)) and value > 0:
+                        values.append(str(value))
+                    else:
+                        values.append('')
+                        if cell.fill.start_color.rgb == 'FF90EE90':
+                            tags.append('green')
+            item_id = tree.insert('', 'end', values=values, tags=tags)
+            if values[0] == 'Total':
+                total_row = item_id
+                tree.tag_configure(item_id, font=('Helvetica', 10, 'bold'))
+
+        # Apply bold to total row
+        if total_row:
+            tree.tag_configure(total_row, font=('Helvetica', 10, 'bold'))
+
+        # Apply green background to cells with green fill
+        tree.tag_configure('green', background='#90EE90')
+
+        # Scrollbars
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        vsb.pack(side='right', fill='y')
+        tree.configure(yscrollcommand=vsb.set)
+
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        hsb.pack(side='bottom', fill='x')
+        tree.configure(xscrollcommand=hsb.set)
+
+        # Copy functionality
+        def copy_selection(event=None):
+            selected_items = tree.selection()
+            if selected_items:
+                copied_data = []
+                for item in selected_items:
+                    values = tree.item(item, 'values')
+                    copied_data.append('\t'.join(map(str, values)))
+                popup.clipboard_clear()
+                popup.clipboard_append('\n'.join(copied_data))
+                self.log("Selected rows copied to clipboard")
+
+        tree.bind('<Control-c>', copy_selection)
+        tree.bind('<Button-3>', lambda event: copy_selection())
+
+        # Column deletion controls
+        delete_frame = ttk.Frame(popup)
+        delete_frame.pack(pady=10)
+        ttk.Label(delete_frame, text="Select Date Column to Delete:").pack(side='left', padx=5)
+        column_var = tk.StringVar()
+        date_columns = [col for col in columns if col != 'Applications']
+        column_dropdown = ttk.Combobox(delete_frame, textvariable=column_var, values=date_columns, state='readonly')
+        column_dropdown.pack(side='left', padx=5)
+
+        def delete_column():
+            selected_column = column_var.get()
+            if not selected_column:
+                messagebox.showwarning("Warning", "Please select a column to delete", parent=popup)
+                return
+            if selected_column == 'Applications':
+                messagebox.showerror("Error", "Cannot delete Applications column", parent=popup)
+                return
+
+            # Update Treeview
+            new_columns = [col for col in columns if col != selected_column]
+            tree['columns'] = new_columns
+            for col in new_columns:
+                tree.heading(col, text=col)
+                tree.column(col, anchor='w' if col == 'Applications' else 'center', width=100)
+            for item in tree.get_children():
+                values = tree.item(item, 'values')
+                new_values = [values[0]] + [values[columns.index(col)] for col in new_columns if col != 'Applications']
+                tree.item(item, values=new_values)
+
+            # Update Final.xlsx
+            try:
+                wb = openpyxl.load_workbook(final_file)
+                ws = wb.active
+                for col in range(ws.max_column, 1, -1):  # Start from last column
+                    if ws.cell(row=1, column=col).value == selected_column:
+                        ws.delete_cols(col)
+                        wb.save(final_file)
+                        self.log(f"Deleted column {selected_column} from Final.xlsx")
+                        break
+                column_dropdown['values'] = [col for col in new_columns if col != 'Applications']
+                column_var.set('')
             except Exception as e:
-                print(f"❌ Error downloading {src}: {e}")
-                continue
+                self.log(f"Error deleting column {selected_column} from Final.xlsx: {e}")
+                messagebox.showerror("Error", f"Failed to delete column: {e}", parent=popup)
 
-        img_tag['src'] = os.path.join(image_folder, filename)
+        delete_button = ttk.Button(delete_frame, text="Delete Selected Column", command=delete_column)
+        delete_button.pack(side='left', padx=5)
 
-    # Save updated HTML back to the same file
-    with open(html_filename, 'w', encoding='utf-8') as f:
-        f.write(str(soup))
+        popup.protocol("WM_DELETE_WINDOW", lambda: popup.destroy())
 
-    print(f"\n✅ Updated HTML with local image paths saved to: {html_filename}")
+    def run_logic(self):
+        self.log("Starting utility...")
 
-def generate_report():
-    # Get values from UI
-    test_ids = test_ids_entry.get().split(",")
-    report_name = report_name_entry.get()
-    start_date = start_date_entry.get()
-    end_date = end_date_entry.get()
-    prepared_by = prepared_by_entry.get()
-    reviewed_by = reviewed_by_entry.get()
-    approved_by = approved_by_entry.get()
-    session_id = session_id_entry.get()
+        # API credentials (replace with actual values)
+        contrast_token = '<<TOKEN>>'
+        org_uuid = '<<UUID>>'
+        api_key = '<<APIKEY>>'
 
-    if not all([test_ids[0], report_name, start_date, end_date, prepared_by, reviewed_by, approved_by, session_id]):
-        messagebox.showerror("Error", "All fields are required!")
-        return
+        # Validate credentials
+        if '<<' in contrast_token or '<<' in org_uuid or '<<' in api_key:
+            self.log("Error: Please replace <<TOKEN>>, <<UUID>>, and <<APIKEY>> with actual credentials")
+            self.fetch_button.config(state='normal')
+            self.root.after(0, lambda: messagebox.showerror("Error", "Invalid API credentials"))
+            return
 
-    # Replace spaces with underscores for filename
-    filename = report_name.replace(" ", "_") + ".html"
+        # Base URL
+        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
 
-    # DefectDojo API endpoint and headers
-    api_url = "https://demo.defectdojo.org/api/v2/tests/{}/generate_report/"
-    api_key = "abcffsfsfsf"
-    headers = {
-        "Authorization": f"Token {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    finding_data = []
-    for test_id in test_ids:
-        response = requests.post(api_url.format(test_id.strip()), headers=headers)
-        if response.status_code == 200:
-            report_data = response.json()
-            findings = report_data.get("findings")
-            if findings:
-                for finding in findings:
-                    finding_data.append(finding)
-            else:
-                print(f"No findings found for Test ID: {test_id.strip()}")
-            print("\n---\n")
-        else:
-            print(f"Error fetching findings for Test ID: {test_id.strip()}. Status code: {response.status_code}")
-
-    # Generate HTML report
-    html_report = generate_html_report(finding_data, report_name, start_date, end_date, prepared_by, reviewed_by, approved_by)
-    save_html_report(html_report, filename)
-
-    # Download images and update HTML
-    download_images_and_update_html(filename, session_id)
-
-    # Convert HTML to PDF
-    try:
-        options = {
-            'page-size': 'A4',
-            'margin-top': '20mm',
-            'margin-right': '20mm',
-            'margin-bottom': '20mm',
-            'margin-left': '20mm',
-            'encoding': "UTF-8",
-            'enable-local-file-access': None,
-            'print-media-type': None,
-            'no-outline': None
+        # Headers
+        headers = {
+            'Authorization': contrast_token,
+            'Api-key': api_key,
+            'Accept': 'application/json'
         }
-        pdf_filename = filename.replace(".html", ".pdf")
-        pdfkit.from_file(filename, pdf_filename, options=options)
-        print(f"PDF report saved as: {pdf_filename}")
-        messagebox.showinfo("Success", f"Report generated successfully!\nHTML: {filename}\nPDF: {pdf_filename}")
-    except ImportError:
-        print("pdfkit not installed. Install it using 'pip install pdfkit' and ensure wkhtmltopdf is installed.")
-        messagebox.showerror("Error", "pdfkit not installed. Install it using 'pip install pdfkit' and ensure wkhtmltopdf is installed.")
-    except Exception as e:
-        print(f"Error generating PDF: {e}")
-        messagebox.showerror("Error", f"Error generating PDF: {e}")
 
-    print(f"HTML report saved as: {filename}")
+        # Define 14 application IDs and their aliases
+        app_aliases = {
+            'hhdjdjdjd': 'CRM',
+            'kkdjdj': 'DRM',
+            'app_id3': 'App3',
+            'app_id4': 'App4',
+            'app_id5': 'App5',
+            'app_id6': 'App6',
+            'app_id7': 'App7',
+            'app_id8': 'App8',
+            'app_id9': 'App9',
+            'app_id10': 'App10',
+            'app_id11': 'App11',
+            'app_id12': 'App12',
+            'app_id13': 'App13',
+            'app_id14': 'App14'
+        }
+        app_ids = list(app_aliases.keys())
 
-# Create modern UI
-root = tk.Tk()
-root.title("DefectDojo Report Generator")
-root.geometry("600x500")
-root.configure(bg="#f0f0f0")
+        # Current date
+        today = datetime.datetime.now()
+        today_str = today.strftime('%Y-%m-%d')
+        date_formatted = today.strftime('%d-%b-%Y')
+        daily_file = os.path.join(data_folder, f'Contrast_Traces_{today_str}.xlsx')
 
-# Style configuration
-style = ttk.Style()
-style.configure("TLabel", background="#f0f0f0", font=("Helvetica", 12))
-style.configure("TEntry", font=("Helvetica", 12))
-style.configure("TButton", font=("Helvetica", 12, "bold"))
+        # Step 1: Download traces and save to daily Excel
+        self.log(f"Downloading traces for {today_str}...")
+        daily_data = []
+        traces_counts = {alias: 0 for alias in app_aliases.values()}
 
-# Main frame
-main_frame = ttk.Frame(root, padding="20")
-main_frame.pack(fill=tk.BOTH, expand=True)
+        with requests.Session() as session:
+            session.headers.update(headers)
+            for app_id in app_ids:
+                alias = app_aliases[app_id]
+                self.log(f"Fetching traces for {alias} ({app_id}) with status 'Reported'...")
+                offset = 0
+                limit = 500  # Fetch 500 traces per request
+                delay = 0.5  # Delay between requests in seconds
+                while True:
+                    url = f"{base_url}{org_uuid}/orgtraces/ids?status=Reported&applicationID={app_id}&limit={limit}&offset={offset}&sort=-last_time_seen"
+                    try:
+                        @retry(
+                            stop=stop_after_attempt(3),
+                            wait=wait_exponential(multiplier=1, min=4, max=10),
+                            retry=retry_if_exception_type((requests.exceptions.RequestException,))
+                        )
+                        def make_request():
+                            return session.get(url, timeout=30)
 
-# Input fields
-fields = [
-    ("Test IDs (comma-separated):", "test_ids"),
-    ("Report Name:", "report_name"),
-    ("Start Date:", "start_date"),
-    ("End Date:", "end_date"),
-    ("Prepared By:", "prepared_by"),
-    ("Reviewed By:", "reviewed_by"),
-    ("Approved By:", "approved_by"),
-    ("Session ID:", "session_id")
-]
+                        response = make_request()
+                        if response.status_code == 200:
+                            data = response.json()
+                            self.log(f"Raw API response for {alias} at offset {offset}: {data}")
+                            # Handle different response formats
+                            traces_fetched = []
+                            if isinstance(data, list):
+                                traces_fetched = data  # Direct list of trace IDs
+                            elif isinstance(data, dict):
+                                traces_fetched = data.get('traces', []) or data.get('ids', [])  # Check common keys
+                            else:
+                                self.log(f"Unexpected response format for {alias}: {type(data)}")
+                                break
 
-for i, (label_text, field_name) in enumerate(fields):
-    ttk.Label(main_frame, text=label_text).grid(row=i, column=0, sticky="w", pady=5)
-    entry = ttk.Entry(main_frame, width=50)
-    entry.grid(row=i, column=1, sticky="ew", pady=5, padx=5)
-    globals()[f"{field_name}_entry"] = entry
+                            self.log(f"Fetched {len(traces_fetched)} traces for {alias} at offset {offset}")
+                            for trace in traces_fetched:
+                                trace_id = trace if isinstance(trace, str) else trace.get('uuid', trace.get('id', ''))
+                                if trace_id:
+                                    daily_data.append({
+                                        'Date': date_formatted,
+                                        'Application': alias,
+                                        'Trace': trace_id
+                                    })
+                                    traces_counts[alias] += 1
+                            if len(traces_fetched) < limit:
+                                break  # No more traces to fetch
+                            offset += limit
+                            time.sleep(delay)
+                        elif response.status_code == 429:
+                            self.log(f"Rate limit exceeded for {alias}. Waiting longer...")
+                            time.sleep(5)  # Wait longer for rate limit
+                            continue
+                        else:
+                            self.log(f"Error fetching traces for {alias}: {response.status_code} - {response.text}")
+                            break
+                    except Exception as e:
+                        self.log(f"Exception fetching traces for {alias} at offset {offset}: {e}")
+                        break
 
-# Generate button
-ttk.Button(main_frame, text="Generate Report", command=generate_report).grid(row=len(fields), column=0, columnspan=2, pady=20)
+        # Save daily traces to Excel
+        self.log(f"Saving daily traces to {daily_file}...")
+        try:
+            df = pd.DataFrame(daily_data if daily_data else [{'Date': date_formatted, 'Application': '', 'Trace': ''}])
+            df.to_excel(daily_file, index=False)
+            wb = openpyxl.load_workbook(daily_file)
+            ws = wb.active
+            ws.title = 'Traces'
 
-# Configure grid weights
-main_frame.columnconfigure(1, weight=1)
+            # Format header
+            thin_border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+            for col in range(1, 4):
+                cell = ws.cell(row=1, column=col)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = thin_border
 
-# Run the application
-root.mainloop()
+            # Format data rows
+            for row in range(2, ws.max_row + 1):
+                for col in range(1, 4):
+                    cell = ws.cell(row=row, column=col)
+                    cell.alignment = Alignment(horizontal='center' if col > 1 else 'left')
+                    cell.border = thin_border
+
+            wb.save(daily_file)
+            self.log(f"Daily traces saved to {daily_file} (Total: {len(daily_data)})")
+        except Exception as e:
+            self.log(f"Error saving daily traces to {daily_file}: {e}")
+            self.fetch_button.config(state='normal')
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save daily traces: {e}"))
+            return
+
+        # Step 2: Update Final.xlsx with counts
+        self.log("Updating Final.xlsx...")
+        final_file = os.path.join(script_dir, 'Final.xlsx')
+        try:
+            final_wb = openpyxl.load_workbook(final_file)
+        except FileNotFoundError:
+            self.log("Final.xlsx not found, creating new...")
+            final_wb = openpyxl.Workbook()
+            final_ws = final_wb.active
+            final_ws.title = 'Summary'
+            final_ws['A1'] = 'Applications'
+            # Add app aliases
+            for row, alias in enumerate(app_aliases.values(), start=2):
+                final_ws.cell(row=row, column=1).value = alias
+            # Add total row
+            total_row = len(app_aliases) + 2
+            final_ws.cell(row=total_row, column=1).value = 'Total'
+
+        final_ws = final_wb.active
+
+        # Find or add date column
+        date_column = None
+        last_column = final_ws.max_column
+        for col in range(2, last_column + 1):
+            if final_ws.cell(row=1, column=col).value == date_formatted:
+                date_column = col
+                self.log(f"Overwriting existing column for {date_formatted} at column {col}")
+                break
+        if date_column is None:
+            date_column = last_column + 1
+            final_ws.cell(row=1, column=date_column).value = date_formatted
+            self.log(f"Adding new column for {date_formatted} at column {date_column}")
+
+        # Clear existing data in the column (except header)
+        for row in range(2, final_ws.max_row + 1):
+            final_ws.cell(row=row, column=date_column).value = None
+            final_ws.cell(row=row, column=date_column).fill = PatternFill()  # Clear fill
+
+        # Update counts
+        green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
+        for row in range(2, final_ws.max_row):
+            app_cell = final_ws.cell(row=row, column=1)
+            if app_cell.value in traces_counts:
+                count = traces_counts[app_cell.value]
+                count_cell = final_ws.cell(row=row, column=date_column)
+                if count > 0:
+                    count_cell.value = count
+                else:
+                    count_cell.fill = green_fill
+
+        # Update total row
+        total_row = final_ws.max_row
+        if final_ws.cell(row=total_row, column=1).value == 'Total':
+            sum_formula = f"=SUM({openpyxl.utils.get_column_letter(date_column)}2:{openpyxl.utils.get_column_letter(date_column)}{total_row-1})"
+            total_cell = final_ws.cell(row=total_row, column=date_column)
+            total_cell.value = sum_formula
+        else:
+            total_row = final_ws.max_row + 1
+            final_ws.cell(row=total_row, column=1).value = 'Total'
+            sum_formula = f"=SUM({openpyxl.utils.get_column_letter(date_column)}2:{openpyxl.utils.get_column_letter(date_column)}{total_row-1})"
+            total_cell = final_ws.cell(row=total_row, column=date_column)
+            total_cell.value = sum_formula
+
+        # Apply formatting
+        thin_border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+        # Header row
+        for col in range(1, final_ws.max_column + 1):
+            cell = final_ws.cell(row=1, column=col)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+
+        # Column A left aligned
+        for row in range(2, final_ws.max_row + 1):
+            cell = final_ws.cell(row=row, column=1)
+            cell.alignment = Alignment(horizontal='left')
+            cell.border = thin_border
+
+        # Other columns center aligned
+        for row in range(2, final_ws.max_row + 1):
+            for col in range(2, final_ws.max_column + 1):
+                cell = final_ws.cell(row=row, column=col)
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = thin_border
+
+        # Total row bold
+        for col in range(1, final_ws.max_column + 1):
+            final_ws.cell(row=total_row, column=col).font = Font(bold=True)
+
+        # Save Final.xlsx
+        try:
+            final_wb.save(final_file)
+            self.log(f"Final.xlsx updated with counts for {date_formatted}")
+        except Exception as e:
+            self.log(f"Error saving Final.xlsx: {e}")
+            self.fetch_button.config(state='normal')
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save Final.xlsx: {e}"))
+            return
+
+        # Show Final.xlsx in popup
+        self.show_final_xlsx_popup(final_file, app_aliases, traces_counts, date_formatted)
+
+        self.log("Utility completed.")
+        self.fetch_button.config(state='normal')
+        self.root.after(0, lambda: messagebox.showinfo("Success", f"Traces downloaded and Final.xlsx updated for {date_formatted}"))
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = UtilityApp(root)
+    root.mainloop()
