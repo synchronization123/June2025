@@ -1,135 +1,261 @@
 import requests
 import pandas as pd
-import re
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import os
-from requests.auth import HTTPBasicAuth
+import datetime
+import tkinter as tk
+from tkinter import ttk
+import threading
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-# Configuration
-jenkins_base_url = "https://jenkins.crm.com"
-username = "your_jenkins_username"  # Replace with your actual Jenkins username
-password = "your_jenkins_password"  # Replace with your actual Jenkins password
-output_excel = "jenkins_report.xlsx"
+# Set working directory to the script's directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
 
-# List of SonarQube instances to check
-sonar_instances = [
-    r'https://sonar\.crm\.com[^\s]*',
-    r'https://sonarenterprise\.crm\.com[^\s]*',
-    r'https://crmsonar\.crm\.com[^\s]*'
-]
+# Create data folder if not exists
+data_folder = os.path.join(script_dir, 'data')
+os.makedirs(data_folder, exist_ok=True)
 
-# Function to save results to Excel
-def save_to_excel(results, filename):
-    df = pd.DataFrame(results)
-    df.to_excel(filename, index=False)
-    print(f"Excel updated: {filename}")
+class UtilityApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Contrast Traces Utility")
+        self.root.geometry("600x400")
 
-# Function to recursively fetch all jobs (including nested/tied jobs)
-def fetch_all_jobs(url, auth, parent_path=""):
-    jobs_list = []
-    api_url = f"{url}/api/json?tree=jobs[name,url,jobs[name,url,jobs[name,url]]]"
-    try:
-        response = requests.get(api_url, auth=auth)
-        if response.status_code != 200:
-            print(f"Warning: Failed to fetch jobs from {url}: {response.status_code}")
-            return jobs_list
-        data = response.json()
-        for job in data.get('jobs', []):
-            name = job['name']
-            job_url = job['url']
-            full_name = f"{parent_path}{name}" if parent_path else name
-            jobs_list.append({"name": full_name, "url": job_url})
-            # Check for nested jobs (e.g., in folders or tied jobs)
-            if 'jobs' in job and job['jobs']:
-                nested_jobs = fetch_all_jobs(job_url, auth, f"{full_name}/")
-                jobs_list.extend(nested_jobs)
-    except Exception as e:
-        print(f"Error fetching jobs from {url}: {e}")
-    return jobs_list
+        # Log frame
+        self.log_frame = ttk.Frame(self.root)
+        self.log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.log_text = tk.Text(self.log_frame, height=20, width=70, state='disabled')
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(self.log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text['yscrollcommand'] = scrollbar.set
 
-# Step 1: Fetch all Jenkins jobs (including nested)
-auth = HTTPBasicAuth(username, password)
-jobs = fetch_all_jobs(jenkins_base_url, auth)
+        # Start the main logic in a separate thread
+        threading.Thread(target=self.run_logic, daemon=True).start()
 
-# Initialize results list
-results = []
+    def log(self, message):
+        self.log_text.configure(state='normal')
+        self.log_text.insert(tk.END, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {message}\n")
+        self.log_text.configure(state='disabled')
+        self.log_text.see(tk.END)
+        self.root.update_idletasks()
 
-# Check if Excel file exists and load existing data
-existing_jobs = set()
-if os.path.exists(output_excel):
-    try:
-        existing_df = pd.read_excel(output_excel)
-        results = existing_df.to_dict('records')  # Convert to list of dictionaries
-        existing_jobs = set(existing_df['Job Name'].tolist())
-        print(f"Found existing Excel with {len(existing_jobs)} jobs processed.")
-        
-        # Prompt user to choose whether to continue or start over
-        choice = input("Do you want to (1) start from the beginning (overwrite Excel) or (2) continue where stopped? Enter 1 or 2: ").strip()
-        if choice == "1":
-            results = []  # Clear results to start fresh
-            existing_jobs = set()
-        elif choice != "2":
-            print("Invalid choice. Defaulting to continue where stopped.")
-    except Exception as e:
-        print(f"Error reading existing Excel: {e}. Starting from the beginning.")
-        results = []
-        existing_jobs = set()
-else:
-    print("No existing Excel found. Starting from the beginning.")
+    def run_logic(self):
+        self.log("Starting utility...")
 
-# Process each job with progress indicator
-total_jobs = len(jobs)
-for index, job in enumerate(jobs, 1):
-    name = job['name']
-    
-    # Skip jobs already processed if continuing
-    if name in existing_jobs:
-        print(f"Skipping job {index}/{total_jobs}: {name} (already processed)")
-        continue
-    
-    print(f"Processing job {index}/{total_jobs}: {name}")
-    url = job['url']
-    job_result = {
-        "Job Name": name,
-        "Url": url,
-        "Sonarqube": "not found",
-        "Dependency Track": "No",
-        "Bitbucket": "not found"
-    }
+        # API credentials (replace with actual values)
+        contrast_token = '<<TOKEN>>'
+        org_uuid = '<<UUID>>'
+        api_key = '<<APIKEY>>'
 
-    # Step 2-4: Fetch console text for the last successful build on develop branch
-    console_url = f"{url}job/develop/lastSuccessfulBuild/consoleText"
-    console_response = requests.get(console_url, auth=auth)
+        # Base URL
+        base_url = 'https://contrast.abc.com/Contrast/api/ng/'
 
-    if console_response.status_code != 200:
-        print(f"Warning: Failed to fetch console text for {name}: {console_response.status_code}")
-        results.append(job_result)
-        save_to_excel(results, output_excel)  # Save progress
-        continue
+        # Headers
+        headers = {
+            'Authorization': contrast_token,
+            'Api-key': api_key,
+            'Accept': 'application/json'
+        }
 
-    console_text = console_response.text
+        # Define 14 application IDs and their aliases
+        app_aliases = {
+            'hhdjdjdjd': 'CRM',
+            'kkdjdj': 'DRM',
+            'app_id3': 'App3',
+            'app_id4': 'App4',
+            'app_id5': 'App5',
+            'app_id6': 'App6',
+            'app_id7': 'App7',
+            'app_id8': 'App8',
+            'app_id9': 'App9',
+            'app_id10': 'App10',
+            'app_id11': 'App11',
+            'app_id12': 'App12',
+            'app_id13': 'App13',
+            'app_id14': 'App14'
+        }
+        app_ids = list(app_aliases.keys())
 
-    # Check for Dependency Track
-    if "The artifact was successfully published" in console_text:
-        job_result["Dependency Track"] = "Yes"
+        # Current date
+        today = datetime.datetime.now()
+        today_str = today.strftime('%Y-%m-%d')
+        date_formatted = today.strftime('%d-%b-%Y')
+        daily_file = os.path.join(data_folder, f'Contrast_Traces_{today_str}.xlsx')
 
-    # Parse lines for Sonarqube and Bitbucket
-    lines = console_text.split('\n')
-    for line in lines:
-        # Step 2: Check for Sonarqube (across all instances)
-        if "ANALYSIS SUCCESSFUL" in line and job_result["Sonarqube"] == "not found":
-            for sonar_pattern in sonar_instances:
-                sonar_match = re.search(sonar_pattern, line)
-                if sonar_match:
-                    job_result["Sonarqube"] = sonar_match.group(0)
-                    break  # Use the first matching SonarQube URL
+        # Step 1: Download traces and save to daily Excel
+        self.log(f"Downloading traces for {today_str}...")
+        daily_data = []
+        traces_counts = {alias: 0 for alias in app_aliases.values()}
 
-        # Step 4: Check for Bitbucket
-        if "Cloning repository" in line and job_result["Bitbucket"] == "not found":
-            bitbucket_match = re.search(r'Cloning repository (https://bitbucket\.crm\.com[^\s]*)', line)
-            if bitbucket_match:
-                job_result["Bitbucket"] = bitbucket_match.group(1)
+        with requests.Session() as session:
+            session.headers.update(headers)
+            for app_id in app_ids:
+                alias = app_aliases[app_id]
+                self.log(f"Fetching traces for {alias} ({app_id}) with status 'Reported'...")
+                offset = 0
+                limit = 500  # Fetch 500 traces per request
+                delay = 0.5  # Delay between requests in seconds
+                while True:
+                    url = f"{base_url}{org_uuid}/orgtraces/id?appId={app_id}&status=Reported&limit={limit}&offset={offset}&sort=-last_time_seen"
+                    try:
+                        @retry(
+                            stop=stop_after_attempt(3),
+                            wait=wait_exponential(multiplier=1, min=4, max=10),
+                            retry=retry_if_exception_type((requests.exceptions.RequestException,))
+                        )
+                        def make_request():
+                            return session.get(url, timeout=30)
 
-    results.append(job_result)
-    save_to_excel(results, output_excel)  # Save progress after each job
+                        response = make_request()
+                        if response.status_code == 200:
+                            data = response.json()
+                            traces_fetched = data.get('traces', [])
+                            self.log(f"Fetched {len(traces_fetched)} traces for {alias} at offset {offset}")
+                            for trace in traces_fetched:
+                                daily_data.append({
+                                    'Date': date_formatted,
+                                    'Application': alias,
+                                    'Trace': trace.get('uuid', '')
+                                })
+                                traces_counts[alias] += 1
+                            if len(traces_fetched) < limit:
+                                break  # No more traces to fetch
+                            offset += limit
+                            time.sleep(delay)
+                        else:
+                            self.log(f"Error fetching traces for {alias}: {response.status_code} - {response.text}")
+                            break
+                    except Exception as e:
+                        self.log(f"Exception fetching traces for {alias}: {e}")
+                        break
 
-print(f"\nReport generation complete: {output_excel}")
+        # Save daily traces to Excel
+        if daily_data:
+            df = pd.DataFrame(daily_data)
+            df.to_excel(daily_file, index=False)
+            wb = openpyxl.load_workbook(daily_file)
+            ws = wb.active
+            ws.title = 'Traces'
+
+            # Format header
+            for col in range(1, 4):
+                cell = ws.cell(row=1, column=col)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+
+            # Format data rows
+            for row in range(2, ws.max_row + 1):
+                for col in range(1, 4):
+                    cell = ws.cell(row=row, column=col)
+                    cell.alignment = Alignment(horizontal='center' if col > 1 else 'left')
+                    cell.border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+
+            wb.save(daily_file)
+            self.log(f"Daily traces saved to {daily_file}")
+        else:
+            self.log("No traces found for today.")
+
+        # Step 2: Update Final.xlsx with counts
+        self.log("Updating Final.xlsx...")
+        final_file = os.path.join(script_dir, 'Final.xlsx')
+        try:
+            final_wb = openpyxl.load_workbook(final_file)
+        except FileNotFoundError:
+            self.log("Final.xlsx not found, creating new...")
+            final_wb = openpyxl.Workbook()
+            final_ws = final_wb.active
+            final_ws.title = 'Summary'
+            final_ws['A1'] = 'Applications'
+            # Add app aliases
+            for row, alias in enumerate(app_aliases.values(), start=2):
+                final_ws.cell(row=row, column=1).value = alias
+            # Add total row
+            total_row = len(app_aliases) + 2
+            final_ws.cell(row=total_row, column=1).value = 'Total'
+
+        final_ws = final_wb.active
+
+        # Find or add date column
+        date_column = None
+        last_column = final_ws.max_column
+        for col in range(2, last_column + 1):
+            if final_ws.cell(row=1, column=col).value == date_formatted:
+                date_column = col
+                self.log(f"Overwriting existing column for {date_formatted} at column {col}")
+                break
+        if date_column is None:
+            date_column = last_column + 1
+            final_ws.cell(row=1, column=date_column).value = date_formatted
+            self.log(f"Adding new column for {date_formatted} at column {date_column}")
+
+        # Clear existing data in the column (except header)
+        for row in range(2, final_ws.max_row + 1):
+            final_ws.cell(row=row, column=date_column).value = None
+            final_ws.cell(row=row, column=date_column).fill = PatternFill()  # Clear fill
+
+        # Update counts
+        green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
+        for row in range(2, final_ws.max_row):
+            app_cell = final_ws.cell(row=row, column=1)
+            if app_cell.value in traces_counts:
+                count = traces_counts[app_cell.value]
+                count_cell = final_ws.cell(row=row, column=date_column)
+                if count > 0:
+                    count_cell.value = count
+                else:
+                    count_cell.fill = green_fill
+
+        # Update total row
+        total_row = final_ws.max_row
+        if final_ws.cell(row=total_row, column=1).value == 'Total':
+            sum_formula = f"=SUM({openpyxl.utils.get_column_letter(date_column)}2:{openpyxl.utils.get_column_letter(date_column)}{total_row-1})"
+            total_cell = final_ws.cell(row=total_row, column=date_column)
+            total_cell.value = sum_formula
+        else:
+            total_row = final_ws.max_row + 1
+            final_ws.cell(row=total_row, column=1).value = 'Total'
+            sum_formula = f"=SUM({openpyxl.utils.get_column_letter(date_column)}2:{openpyxl.utils.get_column_letter(date_column)}{total_row-1})"
+            total_cell = final_ws.cell(row=total_row, column=date_column)
+            total_cell.value = sum_formula
+
+        # Apply formatting
+        thin_border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+        # Header row
+        for col in range(1, final_ws.max_column + 1):
+            cell = final_ws.cell(row=1, column=col)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+
+        # Column A left aligned
+        for row in range(2, final_ws.max_row + 1):
+            cell = final_ws.cell(row=row, column=1)
+            cell.alignment = Alignment(horizontal='left')
+            cell.border = thin_border
+
+        # Other columns center aligned
+        for row in range(2, final_ws.max_row + 1):
+            for col in range(2, final_ws.max_column + 1):
+                cell = final_ws.cell(row=row, column=col)
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = thin_border
+
+        # Total row bold
+        for col in range(1, final_ws.max_column + 1):
+            final_ws.cell(row=total_row, column=col).font = Font(bold=True)
+
+        # Save Final.xlsx
+        final_wb.save(final_file)
+        self.log(f"Final.xlsx updated with counts for {date_formatted}")
+
+        self.log("Utility completed.")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = UtilityApp(root)
+    root.mainloop()
