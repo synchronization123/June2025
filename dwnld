@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox
 import threading
 import time
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import logging
 
 # Set working directory to the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,7 +17,21 @@ os.chdir(script_dir)
 
 # Create data folder if not exists
 data_folder = os.path.join(script_dir, 'data')
-os.makedirs(data_folder, exist_ok=True)
+try:
+    os.makedirs(data_folder, exist_ok=True)
+except Exception as e:
+    logging.error(f"Failed to create data folder: {e}")
+
+# Set up logging to file and console
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(script_dir, 'trace_download.log')),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class UtilityApp:
     def __init__(self, root):
@@ -40,6 +55,7 @@ class UtilityApp:
         self.log_text['yscrollcommand'] = scrollbar.set
 
     def log(self, message):
+        logger.info(message)
         self.log_text.configure(state='normal')
         self.log_text.insert(tk.END, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {message}\n")
         self.log_text.configure(state='disabled')
@@ -57,6 +73,13 @@ class UtilityApp:
         contrast_token = '<<TOKEN>>'
         org_uuid = '<<UUID>>'
         api_key = '<<APIKEY>>'
+
+        # Validate credentials
+        if '<<' in contrast_token or '<<' in org_uuid or '<<' in api_key:
+            self.log("Error: Please replace <<TOKEN>>, <<UUID>>, and <<APIKEY>> with actual credentials")
+            self.fetch_button.config(state='normal')
+            self.root.after(0, lambda: messagebox.showerror("Error", "Invalid API credentials"))
+            return
 
         # Base URL
         base_url = 'https://contrast.abc.com/Contrast/api/ng/'
@@ -120,28 +143,45 @@ class UtilityApp:
                         response = make_request()
                         if response.status_code == 200:
                             data = response.json()
-                            traces_fetched = data.get('traces', [])
+                            self.log(f"Raw API response for {alias} at offset {offset}: {data}")
+                            # Handle different response formats
+                            traces_fetched = []
+                            if isinstance(data, list):
+                                traces_fetched = data  # Direct list of trace IDs
+                            elif isinstance(data, dict):
+                                traces_fetched = data.get('traces', []) or data.get('ids', [])  # Check common keys
+                            else:
+                                self.log(f"Unexpected response format for {alias}: {type(data)}")
+                                break
+
                             self.log(f"Fetched {len(traces_fetched)} traces for {alias} at offset {offset}")
                             for trace in traces_fetched:
-                                daily_data.append({
-                                    'Date': date_formatted,
-                                    'Application': alias,
-                                    'Trace': trace.get('uuid', '')
-                                })
-                                traces_counts[alias] += 1
+                                trace_id = trace if isinstance(trace, str) else trace.get('uuid', trace.get('id', ''))
+                                if trace_id:
+                                    daily_data.append({
+                                        'Date': date_formatted,
+                                        'Application': alias,
+                                        'Trace': trace_id
+                                    })
+                                    traces_counts[alias] += 1
                             if len(traces_fetched) < limit:
                                 break  # No more traces to fetch
                             offset += limit
                             time.sleep(delay)
+                        elif response.status_code == 429:
+                            self.log(f"Rate limit exceeded for {alias}. Waiting longer...")
+                            time.sleep(5)  # Wait longer for rate limit
+                            continue
                         else:
                             self.log(f"Error fetching traces for {alias}: {response.status_code} - {response.text}")
                             break
                     except Exception as e:
-                        self.log(f"Exception fetching traces for {alias}: {e}")
+                        self.log(f"Exception fetching traces for {alias} at offset {offset}: {e}")
                         break
 
         # Save daily traces to Excel
-        if daily_data:
+        self.log(f"Saving daily traces to {daily_file}...")
+        try:
             df = pd.DataFrame(daily_data)
             df.to_excel(daily_file, index=False)
             wb = openpyxl.load_workbook(daily_file)
@@ -164,9 +204,12 @@ class UtilityApp:
                     cell.border = thin_border
 
             wb.save(daily_file)
-            self.log(f"Daily traces saved to {daily_file}")
-        else:
-            self.log("No traces found for today.")
+            self.log(f"Daily traces saved to {daily_file} (Total: {len(daily_data)})")
+        except Exception as e:
+            self.log(f"Error saving daily traces to {daily_file}: {e}")
+            self.fetch_button.config(state='normal')
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save daily traces: {e}"))
+            return
 
         # Step 2: Update Final.xlsx with counts
         self.log("Updating Final.xlsx...")
@@ -258,8 +301,14 @@ class UtilityApp:
             final_ws.cell(row=total_row, column=col).font = Font(bold=True)
 
         # Save Final.xlsx
-        final_wb.save(final_file)
-        self.log(f"Final.xlsx updated with counts for {date_formatted}")
+        try:
+            final_wb.save(final_file)
+            self.log(f"Final.xlsx updated with counts for {date_formatted}")
+        except Exception as e:
+            self.log(f"Error saving Final.xlsx: {e}")
+            self.fetch_button.config(state='normal')
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to save Final.xlsx: {e}"))
+            return
 
         self.log("Utility completed.")
         self.fetch_button.config(state='normal')
