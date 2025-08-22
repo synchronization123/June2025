@@ -10,7 +10,6 @@ import threading
 import time
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import logging
-from copy import deepcopy
 
 # Set working directory to the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -68,7 +67,6 @@ class UtilityApp:
         threading.Thread(target=self.run_logic, daemon=True).start()
 
     def show_final_xlsx_popup(self, final_file, app_aliases, traces_counts, date_formatted):
-        # Load Final.xlsx
         try:
             wb = openpyxl.load_workbook(final_file)
             ws = wb.active
@@ -99,19 +97,23 @@ class UtilityApp:
         # Style for Treeview
         style = ttk.Style()
         style.configure("Treeview.Heading", font=('Helvetica', 10, 'bold'))
-        style.configure("Treeview", rowheight=25)
+        style.configure("Treeview", rowheight=25, font=('Helvetica', 10))
+        style.configure("Bold.Treeview", font=('Helvetica', 10, 'bold'))
         style.configure("Green.Treeview", background='#90EE90')
 
         # Insert data
-        total_row = None
+        total_row_id = None
         for row in range(2, ws.max_row + 1):
             values = []
             tags = []
+            is_total = ws.cell(row=row, column=1).value == 'Total'
             for col in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row, column=col)
                 value = cell.value if cell.value is not None else ''
                 if col == 1:
-                    values.append(value)  # Application name
+                    values.append(value)
+                    if value in app_aliases.values() or is_total:
+                        tags.append('bold')
                 else:
                     if isinstance(value, (int, float)) and value > 0:
                         values.append(str(value))
@@ -120,25 +122,24 @@ class UtilityApp:
                         if cell.fill.start_color.rgb == 'FF90EE90':
                             tags.append('green')
             item_id = tree.insert('', 'end', values=values, tags=tags)
-            if values[0] == 'Total':
-                total_row = item_id
-                tree.tag_configure(item_id, font=('Helvetica', 10, 'bold'))
+            if is_total:
+                total_row_id = item_id
 
-        # Apply bold to total row
-        if total_row:
-            tree.tag_configure(total_row, font=('Helvetica', 10, 'bold'))
-
-        # Apply green background to cells with green fill
+        # Apply bold and green tags
+        tree.tag_configure('bold', font=('Helvetica', 10, 'bold'))
         tree.tag_configure('green', background='#90EE90')
 
-        # Scrollbars
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-        vsb.pack(side='right', fill='y')
-        tree.configure(yscrollcommand=vsb.set)
+        # Add grid lines
+        style.configure("Treeview", borderwidth=1, relief="solid")
+        for col in columns:
+            tree.column(col, stretch=False)
 
-        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
-        hsb.pack(side='bottom', fill='x')
-        tree.configure(xscrollcommand=hsb.set)
+        # Deselect on click outside
+        def deselect_tree(event):
+            if tree.identify_region(event.x, event.y) not in ('cell', 'heading'):
+                tree.selection_remove(tree.selection())
+
+        popup.bind('<Button-1>', deselect_tree)
 
         # Copy functionality
         def copy_selection(event=None):
@@ -188,7 +189,7 @@ class UtilityApp:
             try:
                 wb = openpyxl.load_workbook(final_file)
                 ws = wb.active
-                for col in range(ws.max_column, 1, -1):  # Start from last column
+                for col in range(ws.max_column, 1, -1):
                     if ws.cell(row=1, column=col).value == selected_column:
                         ws.delete_cols(col)
                         wb.save(final_file)
@@ -266,8 +267,8 @@ class UtilityApp:
                 alias = app_aliases[app_id]
                 self.log(f"Fetching traces for {alias} ({app_id}) with status 'Reported'...")
                 offset = 0
-                limit = 500  # Fetch 500 traces per request
-                delay = 0.5  # Delay between requests in seconds
+                limit = 500
+                delay = 0.5
                 while True:
                     url = f"{base_url}{org_uuid}/orgtraces/ids?status=Reported&applicationID={app_id}&limit={limit}&offset={offset}&sort=-last_time_seen"
                     try:
@@ -283,12 +284,11 @@ class UtilityApp:
                         if response.status_code == 200:
                             data = response.json()
                             self.log(f"Raw API response for {alias} at offset {offset}: {data}")
-                            # Handle different response formats
                             traces_fetched = []
                             if isinstance(data, list):
-                                traces_fetched = data  # Direct list of trace IDs
+                                traces_fetched = data
                             elif isinstance(data, dict):
-                                traces_fetched = data.get('traces', []) or data.get('ids', [])  # Check common keys
+                                traces_fetched = data.get('traces', []) or data.get('ids', [])
                             else:
                                 self.log(f"Unexpected response format for {alias}: {type(data)}")
                                 break
@@ -304,12 +304,12 @@ class UtilityApp:
                                     })
                                     traces_counts[alias] += 1
                             if len(traces_fetched) < limit:
-                                break  # No more traces to fetch
+                                break
                             offset += limit
                             time.sleep(delay)
                         elif response.status_code == 429:
                             self.log(f"Rate limit exceeded for {alias}. Waiting longer...")
-                            time.sleep(5)  # Wait longer for rate limit
+                            time.sleep(5)
                             continue
                         else:
                             self.log(f"Error fetching traces for {alias}: {response.status_code} - {response.text}")
@@ -327,7 +327,6 @@ class UtilityApp:
             ws = wb.active
             ws.title = 'Traces'
 
-            # Format header
             thin_border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
             for col in range(1, 4):
                 cell = ws.cell(row=1, column=col)
@@ -335,7 +334,6 @@ class UtilityApp:
                 cell.alignment = Alignment(horizontal='center')
                 cell.border = thin_border
 
-            # Format data rows
             for row in range(2, ws.max_row + 1):
                 for col in range(1, 4):
                     cell = ws.cell(row=row, column=col)
@@ -361,12 +359,12 @@ class UtilityApp:
             final_ws = final_wb.active
             final_ws.title = 'Summary'
             final_ws['A1'] = 'Applications'
-            # Add app aliases
             for row, alias in enumerate(app_aliases.values(), start=2):
                 final_ws.cell(row=row, column=1).value = alias
-            # Add total row
+                final_ws.cell(row=row, column=1).font = Font(bold=True)  # Bold application list
             total_row = len(app_aliases) + 2
             final_ws.cell(row=total_row, column=1).value = 'Total'
+            final_ws.cell(row=total_row, column=1).font = Font(bold=True)
 
         final_ws = final_wb.active
 
@@ -386,7 +384,7 @@ class UtilityApp:
         # Clear existing data in the column (except header)
         for row in range(2, final_ws.max_row + 1):
             final_ws.cell(row=row, column=date_column).value = None
-            final_ws.cell(row=row, column=date_column).fill = PatternFill()  # Clear fill
+            final_ws.cell(row=row, column=date_column).fill = PatternFill()
 
         # Update counts
         green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
@@ -406,38 +404,37 @@ class UtilityApp:
             sum_formula = f"=SUM({openpyxl.utils.get_column_letter(date_column)}2:{openpyxl.utils.get_column_letter(date_column)}{total_row-1})"
             total_cell = final_ws.cell(row=total_row, column=date_column)
             total_cell.value = sum_formula
+            total_cell.font = Font(bold=True)
         else:
             total_row = final_ws.max_row + 1
             final_ws.cell(row=total_row, column=1).value = 'Total'
+            final_ws.cell(row=total_row, column=1).font = Font(bold=True)
             sum_formula = f"=SUM({openpyxl.utils.get_column_letter(date_column)}2:{openpyxl.utils.get_column_letter(date_column)}{total_row-1})"
             total_cell = final_ws.cell(row=total_row, column=date_column)
             total_cell.value = sum_formula
+            total_cell.font = Font(bold=True)
 
-        # Apply formatting
+        # Apply formatting to Final.xlsx
         thin_border = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
-        # Header row
         for col in range(1, final_ws.max_column + 1):
             cell = final_ws.cell(row=1, column=col)
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal='center')
             cell.border = thin_border
 
-        # Column A left aligned
         for row in range(2, final_ws.max_row + 1):
             cell = final_ws.cell(row=row, column=1)
             cell.alignment = Alignment(horizontal='left')
             cell.border = thin_border
+            cell.font = Font(bold=True) if row != total_row else Font(bold=True)
 
-        # Other columns center aligned
         for row in range(2, final_ws.max_row + 1):
             for col in range(2, final_ws.max_column + 1):
                 cell = final_ws.cell(row=row, column=col)
                 cell.alignment = Alignment(horizontal='center')
                 cell.border = thin_border
-
-        # Total row bold
-        for col in range(1, final_ws.max_column + 1):
-            final_ws.cell(row=total_row, column=col).font = Font(bold=True)
+                if row == total_row:
+                    cell.font = Font(bold=True)
 
         # Save Final.xlsx
         try:
