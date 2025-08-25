@@ -263,13 +263,14 @@
         <div class="modal" id="edit-modal">
             <div class="modal-content">
                 <h2>Edit Engagement</h2>
-                <p>Update engagement details and save changes.</p>
-                <input type="text" id="modal-project" readonly>
-                <input type="text" id="modal-product" readonly>
+                <p>Update engagement details and save changes. Product name and status are required.</p>
+                <input type="text" id="modal-project" placeholder="Enter Project (Version)">
+                <input type="text" id="modal-product" placeholder="Enter Product (required)">
                 <input type="text" id="modal-vp" placeholder="Enter VP">
                 <input type="text" id="modal-dev-mentor" placeholder="Enter Dev Mentor">
                 <input type="text" id="modal-owners" placeholder="Enter Owners">
                 <select id="modal-alf-status">
+                    <option value="" disabled>Select Status (required)</option>
                     <option value="Completed">Already Covered in ALF</option>
                     <option value="On Hold">Not Covered by ALF</option>
                     <option value="Blocked">Not Applicable for ALF</option>
@@ -279,7 +280,9 @@
                     <option value="In Progress">In Progress</option>
                 </select>
                 <input type="text" id="modal-repolinks" placeholder="Enter RepoLinks">
-                <select id="modal-analyst"></select>
+                <select id="modal-analyst">
+                    <option value="">Select Analyst (optional)</option>
+                </select>
                 <textarea id="modal-comments" placeholder="Enter Comments"></textarea>
                 <button class="btn-save" onclick="saveChanges()">Save</button>
                 <button class="btn-cancel" onclick="cancelEdit()">Cancel</button>
@@ -288,13 +291,14 @@
         <div class="modal" id="new-modal">
             <div class="modal-content">
                 <h2>Create New Engagement</h2>
-                <p>Enter details for the new engagement. All fields are required where indicated.</p>
+                <p>Enter details for the new engagement. Product name and status are required.</p>
                 <input type="text" id="new-project" placeholder="Enter Project (Version)">
                 <input type="text" id="new-product" placeholder="Enter Product (required)">
                 <input type="text" id="new-vp" placeholder="Enter VP">
                 <input type="text" id="new-dev-mentor" placeholder="Enter Dev Mentor">
                 <input type="text" id="new-owners" placeholder="Enter Owners">
                 <select id="new-alf-status">
+                    <option value="" disabled>Select Status (required)</option>
                     <option value="Not Started">Not Started</option>
                     <option value="Completed">Already Covered in ALF</option>
                     <option value="On Hold">Not Covered by ALF</option>
@@ -304,7 +308,9 @@
                     <option value="In Progress">In Progress</option>
                 </select>
                 <input type="text" id="new-repolinks" placeholder="Enter RepoLinks">
-                <select id="new-analyst"></select>
+                <select id="new-analyst">
+                    <option value="">Select Analyst (optional)</option>
+                </select>
                 <textarea id="new-comments" placeholder="Enter Comments"></textarea>
                 <button class="btn-save" onclick="createNewEngagement()">Create</button>
                 <button class="btn-cancel" onclick="cancelNew()">Cancel</button>
@@ -366,8 +372,8 @@
             const modalAnalyst = document.getElementById('modal-analyst');
             const newAnalyst = document.getElementById('new-analyst');
             analystFilter.innerHTML = '<option value="">Select Analyst</option>';
-            modalAnalyst.innerHTML = '<option value="">Select Analyst</option>';
-            newAnalyst.innerHTML = '<option value="">Select Analyst</option>';
+            modalAnalyst.innerHTML = '<option value="">Select Analyst (optional)</option>';
+            newAnalyst.innerHTML = '<option value="">Select Analyst (optional)</option>';
             users.forEach(user => {
                 const name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
                 if (name) {
@@ -543,7 +549,7 @@
             document.getElementById('new-vp').value = '';
             document.getElementById('new-dev-mentor').value = '';
             document.getElementById('new-owners').value = '';
-            document.getElementById('new-alf-status').value = 'Not Started';
+            document.getElementById('new-alf-status').value = '';
             document.getElementById('new-repolinks').value = '';
             document.getElementById('new-analyst').value = '';
             document.getElementById('new-comments').value = '';
@@ -557,14 +563,30 @@
             }
             try {
                 showLoading();
-                const item = {
-                    tags: ['ALF'], // Ensure tags include ALF
-                    name: document.getElementById('modal-product').value,
-                    target_start: new Date().toISOString().split('T')[0],
-                    target_end: new Date().toISOString().split('T')[0],
-                    status: document.getElementById('modal-alf-status').value || 'Not Started',
+                const name = document.getElementById('modal-product').value;
+                const status = document.getElementById('modal-alf-status').value;
+                if (!name) {
+                    showToast('Product name is required.', false);
+                    return;
+                }
+                if (!status) {
+                    showToast('Status is required.', false);
+                    return;
+                }
+                const item = data.find(d => d.id === currentEditId);
+                if (!item || !item.target_start || !item.target_end || !item.product) {
+                    showToast('Invalid engagement data. Please refresh and try again.', false);
+                    return;
+                }
+                const payload = {
+                    name: name,
+                    target_start: item.target_start, // Preserve original date
+                    target_end: item.target_end, // Preserve original date
+                    status: status,
                     lead: parseInt(document.getElementById('modal-analyst').value) || null,
-                    product: 1, // Adjust based on actual product ID
+                    product: item.product, // Use existing product ID
+                    tags: ['ALF'], // Include tags as per create
+                    version: document.getElementById('modal-project').value || '',
                     reason: document.getElementById('modal-vp').value || '',
                     build_id: document.getElementById('modal-dev-mentor').value || '',
                     commit_hash: document.getElementById('modal-owners').value || '',
@@ -572,17 +594,21 @@
                     description: document.getElementById('modal-comments').value || ''
                 };
 
+                console.log('PUT Payload:', payload); // Debug payload
+
                 const response = await fetch(`${baseUrl}/api/v2/engagements/${currentEditId}/`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrfToken
                     },
-                    body: JSON.stringify(item)
+                    body: JSON.stringify(payload)
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json();
+                    console.error('PUT Error Response:', errorData); // Debug error response
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
                 }
 
                 document.getElementById('edit-modal').classList.remove('show');
@@ -590,7 +616,7 @@
                 fetchData();
             } catch (error) {
                 console.error('Error saving changes:', error);
-                showToast('Failed to save changes. Please try again.', false);
+                showToast(`Failed to save changes: ${error.message}`, false);
             } finally {
                 hideLoading();
             }
@@ -604,18 +630,23 @@
             try {
                 showLoading();
                 const productName = document.getElementById('new-product').value;
+                const status = document.getElementById('new-alf-status').value;
                 if (!productName) {
                     showToast('Product name is required.', false);
                     return;
                 }
-                const item = {
-                    tags: ['ALF'],
+                if (!status) {
+                    showToast('Status is required.', false);
+                    return;
+                }
+                const payload = {
                     name: productName,
-                    target_start: new Date().toISOString().split('T')[0],
-                    target_end: new Date().toISOString().split('T')[0],
-                    status: document.getElementById('new-alf-status').value || 'Not Started',
+                    target_start: new Date().toISOString().slice(0, 26), // Format: YYYY-MM-DDTHH:MM:SS.ssssss
+                    target_end: new Date().toISOString().slice(0, 26), // Format: YYYY-MM-DDTHH:MM:SS.ssssss
+                    status: status,
                     lead: parseInt(document.getElementById('new-analyst').value) || null,
                     product: 1, // Adjust based on actual product ID
+                    tags: ['ALF'],
                     version: document.getElementById('new-project').value || '',
                     reason: document.getElementById('new-vp').value || '',
                     build_id: document.getElementById('new-dev-mentor').value || '',
@@ -624,17 +655,21 @@
                     description: document.getElementById('new-comments').value || ''
                 };
 
+                console.log('POST Payload:', payload); // Debug payload
+
                 const response = await fetch(`${baseUrl}/api/v2/engagements/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrfToken
                     },
-                    body: JSON.stringify(item)
+                    body: JSON.stringify(payload)
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json();
+                    console.error('POST Error Response:', errorData); // Debug error response
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
                 }
 
                 document.getElementById('new-modal').classList.remove('show');
@@ -642,7 +677,7 @@
                 fetchData();
             } catch (error) {
                 console.error('Error creating engagement:', error);
-                showToast('Failed to create engagement. Please try again.', false);
+                showToast(`Failed to create engagement: ${error.message}`, false);
             } finally {
                 hideLoading();
             }
@@ -665,7 +700,7 @@
             toast.textContent = message;
             toast.style.background = success ? '#4caf50' : '#f44336';
             toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
+            setTimeout(() => toast.classList.remove('show'), 5000);
         }
 
         // Initial fetch
