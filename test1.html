@@ -36,13 +36,19 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
+            transition: background-color 0.3s, transform 0.1s;
         }
         .filters button:hover {
             opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .filters button:active {
+            transform: translateY(0);
         }
         .btn-reset { background-color: #f44336; color: white; }
         .btn-refresh { background-color: #2196f3; color: white; }
         .btn-go { background-color: #4caf50; color: white; }
+        .btn-new { background-color: #ff9800; color: white; }
         .table-container {
             background: #fff;
             padding: 15px;
@@ -63,6 +69,22 @@
             background-color: #2196f3;
             color: white;
         }
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: #2196f3;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+        .action-btn:hover {
+            background-color: #1976d2;
+            transform: translateY(-1px);
+        }
+        .action-btn:active {
+            transform: translateY(0);
+        }
         .pagination {
             display: flex;
             justify-content: center;
@@ -74,6 +96,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             cursor: pointer;
+            transition: background-color 0.3s;
         }
         .pagination button:disabled {
             cursor: not-allowed;
@@ -89,12 +112,29 @@
             background: rgba(0,0,0,0.5);
             justify-content: center;
             align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .modal.show {
+            display: flex;
+            opacity: 1;
         }
         .modal-content {
             background: #fff;
             padding: 20px;
             border-radius: 8px;
-            width: 400px;
+            width: 450px;
+            transform: translateY(-50px);
+            transition: transform 0.3s ease-in-out;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .modal.show .modal-content {
+            transform: translateY(0);
+        }
+        .modal-content p {
+            margin: 0 0 15px;
+            color: #555;
+            font-size: 14px;
         }
         .modal-content input, .modal-content select, .modal-content textarea {
             width: 100%;
@@ -102,10 +142,11 @@
             margin-bottom: 10px;
             border: 1px solid #ccc;
             border-radius: 4px;
+            font-size: 14px;
         }
         .modal-content textarea {
-            height: 50px;
-            width: 100px;
+            height: 70px; /* ~7cm */
+            width: 150px; /* ~15cm */
             resize: none;
         }
         .modal-content button {
@@ -113,6 +154,14 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+        .modal-content button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        .modal-content button:active {
+            transform: translateY(0);
         }
         .btn-save { background-color: #4caf50; color: white; }
         .btn-cancel { background-color: #f44336; color: white; }
@@ -125,6 +174,38 @@
             color: white;
             padding: 10px 20px;
             border-radius: 4px;
+            transition: opacity 0.3s;
+        }
+        .toast.show {
+            display: block;
+            opacity: 1;
+        }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading.show {
+            display: flex;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2196f3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -152,6 +233,7 @@
             <button class="btn-reset" onclick="resetFilters()">Reset</button>
             <button class="btn-refresh" onclick="fetchData()">Refresh</button>
             <button class="btn-go" onclick="applyFilters()">Go</button>
+            <button class="btn-new" onclick="openNewModal()">New</button>
         </div>
         <div class="pagination">
             <button onclick="changePage(-1)" id="prev-page">Previous</button>
@@ -181,11 +263,12 @@
         <div class="modal" id="edit-modal">
             <div class="modal-content">
                 <h2>Edit Engagement</h2>
+                <p>Update engagement details and save changes.</p>
                 <input type="text" id="modal-project" readonly>
                 <input type="text" id="modal-product" readonly>
-                <input type="text" id="modal-vp">
-                <input type="text" id="modal-dev-mentor">
-                <input type="text" id="modal-owners">
+                <input type="text" id="modal-vp" placeholder="Enter VP">
+                <input type="text" id="modal-dev-mentor" placeholder="Enter Dev Mentor">
+                <input type="text" id="modal-owners" placeholder="Enter Owners">
                 <select id="modal-alf-status">
                     <option value="Completed">Already Covered in ALF</option>
                     <option value="On Hold">Not Covered by ALF</option>
@@ -195,14 +278,42 @@
                     <option value="Not Started">Not Started</option>
                     <option value="In Progress">In Progress</option>
                 </select>
-                <input type="text" id="modal-repolinks">
+                <input type="text" id="modal-repolinks" placeholder="Enter RepoLinks">
                 <select id="modal-analyst"></select>
-                <textarea id="modal-comments"></textarea>
+                <textarea id="modal-comments" placeholder="Enter Comments"></textarea>
                 <button class="btn-save" onclick="saveChanges()">Save</button>
                 <button class="btn-cancel" onclick="cancelEdit()">Cancel</button>
             </div>
         </div>
-        <div class="toast" id="toast">Changes saved successfully!</div>
+        <div class="modal" id="new-modal">
+            <div class="modal-content">
+                <h2>Create New Engagement</h2>
+                <p>Enter details for the new engagement. All fields are required where indicated.</p>
+                <input type="text" id="new-project" placeholder="Enter Project (Version)">
+                <input type="text" id="new-product" placeholder="Enter Product (required)">
+                <input type="text" id="new-vp" placeholder="Enter VP">
+                <input type="text" id="new-dev-mentor" placeholder="Enter Dev Mentor">
+                <input type="text" id="new-owners" placeholder="Enter Owners">
+                <select id="new-alf-status">
+                    <option value="Not Started">Not Started</option>
+                    <option value="Completed">Already Covered in ALF</option>
+                    <option value="On Hold">Not Covered by ALF</option>
+                    <option value="Blocked">Not Applicable for ALF</option>
+                    <option value="Cancelled">Retired/Deactivated</option>
+                    <option value="Waiting for Resource">ALF Required/Response Received</option>
+                    <option value="In Progress">In Progress</option>
+                </select>
+                <input type="text" id="new-repolinks" placeholder="Enter RepoLinks">
+                <select id="new-analyst"></select>
+                <textarea id="new-comments" placeholder="Enter Comments"></textarea>
+                <button class="btn-save" onclick="createNewEngagement()">Create</button>
+                <button class="btn-cancel" onclick="cancelNew()">Cancel</button>
+            </div>
+        </div>
+        <div class="toast" id="toast"></div>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+        </div>
     </div>
 
     <script>
@@ -216,6 +327,7 @@
 
         async function fetchCsrfToken() {
             try {
+                showLoading();
                 const response = await fetch(baseUrl);
                 const html = await response.text();
                 const parser = new DOMParser();
@@ -223,41 +335,50 @@
                 csrfToken = doc.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
             } catch (error) {
                 console.error('Error fetching CSRF token:', error);
+            } finally {
+                hideLoading();
             }
         }
 
         async function fetchUsers() {
             try {
-                const response = await fetch(`${baseUrl}/api/v2/users/`); // No Authorization header for GET
+                showLoading();
+                const response = await fetch(`${baseUrl}/api/v2/users/`);
                 const result = await response.json();
-                users = result.results || []; // Access results array
+                users = result.results || [];
                 populateAnalystFilter();
             } catch (error) {
                 console.error('Error fetching users:', error);
                 users = [];
                 populateAnalystFilter();
+            } finally {
+                hideLoading();
             }
         }
 
         function populateAnalystFilter() {
             const analystFilter = document.getElementById('analyst-filter');
             const modalAnalyst = document.getElementById('modal-analyst');
+            const newAnalyst = document.getElementById('new-analyst');
             analystFilter.innerHTML = '<option value="">Select Analyst</option>';
             modalAnalyst.innerHTML = '<option value="">Select Analyst</option>';
+            newAnalyst.innerHTML = '<option value="">Select Analyst</option>';
             users.forEach(user => {
                 const name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
                 if (name) {
                     analystFilter.innerHTML += `<option value="${user.id}">${name}</option>`;
                     modalAnalyst.innerHTML += `<option value="${user.id}">${name}</option>`;
+                    newAnalyst.innerHTML += `<option value="${user.id}">${name}</option>`;
                 }
             });
         }
 
         async function fetchData() {
             try {
+                showLoading();
                 await fetchCsrfToken();
                 await fetchUsers();
-                const response = await fetch(`${baseUrl}/api/v2/engagements/?offset=${(currentPage - 1) * 10}&limit=10`); // No Authorization header for GET
+                const response = await fetch(`${baseUrl}/api/v2/engagements/?offset=${(currentPage - 1) * 10}&limit=10`);
                 const result = await response.json();
                 data = result.results || [];
                 totalPages = Math.ceil(result.count / 10) || 1;
@@ -271,6 +392,8 @@
                 filteredData = [];
                 renderTable();
                 updatePagination();
+            } finally {
+                hideLoading();
             }
         }
 
@@ -310,7 +433,7 @@
                         <td>${item.branch_tag || ''}</td>
                         <td>${item.description || ''}</td>
                         <td>${(analyst.first_name || '')} ${(analyst.last_name || '')}</td>
-                        <td><button onclick="openEditModal(${item.id})">Edit</button></td>
+                        <td><button class="action-btn" onclick="openEditModal(${item.id})">Edit</button></td>
                     </tr>`;
                 tableBody.innerHTML += row;
             });
@@ -383,6 +506,14 @@
             fetchData();
         }
 
+        function showLoading() {
+            document.getElementById('loading').classList.add('show');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+        }
+
         let currentEditId = null;
 
         function openEditModal(id) {
@@ -397,13 +528,27 @@
             document.getElementById('modal-repolinks').value = item.tracker || '';
             document.getElementById('modal-analyst').value = item.lead || '';
             document.getElementById('modal-comments').value = item.description || '';
-            document.getElementById('edit-modal').style.display = 'flex';
+            document.getElementById('edit-modal').classList.add('show');
+        }
+
+        function openNewModal() {
+            document.getElementById('new-project').value = '';
+            document.getElementById('new-product').value = '';
+            document.getElementById('new-vp').value = '';
+            document.getElementById('new-dev-mentor').value = '';
+            document.getElementById('new-owners').value = '';
+            document.getElementById('new-alf-status').value = 'Not Started';
+            document.getElementById('new-repolinks').value = '';
+            document.getElementById('new-analyst').value = '';
+            document.getElementById('new-comments').value = '';
+            document.getElementById('new-modal').classList.add('show');
         }
 
         async function saveChanges() {
             try {
+                showLoading();
                 const item = {
-                    tags: [], // Adjust if tags are needed
+                    tags: ['ALF'], // Ensure tags include ALF
                     name: document.getElementById('modal-product').value,
                     target_start: new Date().toISOString().split('T')[0],
                     target_end: new Date().toISOString().split('T')[0],
@@ -430,25 +575,83 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                document.getElementById('edit-modal').style.display = 'none';
-                showToast();
+                document.getElementById('edit-modal').classList.remove('show');
+                showToast('Changes saved successfully!');
                 fetchData();
             } catch (error) {
                 console.error('Error saving changes:', error);
-                alert('Failed to save changes. Please try again.');
+                showToast('Failed to save changes. Please try again.', false);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function createNewEngagement() {
+            try {
+                showLoading();
+                const productName = document.getElementById('new-product').value;
+                if (!productName) {
+                    showToast('Product name is required.', false);
+                    return;
+                }
+                const item = {
+                    tags: ['ALF'],
+                    name: productName,
+                    target_start: new Date().toISOString().split('T')[0],
+                    target_end: new Date().toISOString().split('T')[0],
+                    status: document.getElementById('new-alf-status').value || 'Not Started',
+                    lead: parseInt(document.getElementById('new-analyst').value) || null,
+                    product: 1, // Adjust based on actual product ID
+                    version: document.getElementById('new-project').value || '',
+                    reason: document.getElementById('new-vp').value || '',
+                    build_id: document.getElementById('new-dev-mentor').value || '',
+                    commit_hash: document.getElementById('new-owners').value || '',
+                    tracker: document.getElementById('new-repolinks').value || '',
+                    description: document.getElementById('new-comments').value || ''
+                };
+
+                const response = await fetch(`${baseUrl}/api/v2/engagements/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify(item)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                document.getElementById('new-modal').classList.remove('show');
+                showToast('Engagement created successfully!');
+                fetchData();
+            } catch (error) {
+                console.error('Error creating engagement:', error);
+                showToast('Failed to create engagement. Please try again.', false);
+            } finally {
+                hideLoading();
             }
         }
 
         function cancelEdit() {
             if (confirm('Do you want to close this without saving?')) {
-                document.getElementById('edit-modal').style.display = 'none';
+                document.getElementById('edit-modal').classList.remove('show');
             }
         }
 
-        function showToast() {
+        function cancelNew() {
+            if (confirm('Do you want to close this without creating?')) {
+                document.getElementById('new-modal').classList.remove('show');
+            }
+        }
+
+        function showToast(message, success = true) {
             const toast = document.getElementById('toast');
-            toast.style.display = 'block';
-            setTimeout(() => toast.style.display = 'none', 3000);
+            toast.textContent = message;
+            toast.style.background = success ? '#4caf50' : '#f44336';
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
         // Initial fetch
