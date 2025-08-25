@@ -318,6 +318,7 @@
 
     <script>
         const baseUrl = 'https://demo.defectdojo.org';
+        const csrfUrl = 'https://demo.defectdojo.org/api/key-v2';
         let currentPage = 1;
         let totalPages = 1;
         let data = [];
@@ -328,13 +329,17 @@
         async function fetchCsrfToken() {
             try {
                 showLoading();
-                const response = await fetch(baseUrl);
+                const response = await fetch(csrfUrl);
                 const html = await response.text();
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 csrfToken = doc.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+                if (!csrfToken) {
+                    throw new Error('CSRF token not found in the page');
+                }
             } catch (error) {
                 console.error('Error fetching CSRF token:', error);
+                showToast('Failed to fetch CSRF token. Please try again.', false);
             } finally {
                 hideLoading();
             }
@@ -392,6 +397,7 @@
                 filteredData = [];
                 renderTable();
                 updatePagination();
+                showToast('Failed to load engagements. Please try again.', false);
             } finally {
                 hideLoading();
             }
@@ -545,6 +551,10 @@
         }
 
         async function saveChanges() {
+            if (!csrfToken) {
+                showToast('CSRF token is missing. Please refresh and try again.', false);
+                return;
+            }
             try {
                 showLoading();
                 const item = {
@@ -552,7 +562,7 @@
                     name: document.getElementById('modal-product').value,
                     target_start: new Date().toISOString().split('T')[0],
                     target_end: new Date().toISOString().split('T')[0],
-                    status: document.getElementById('modal-alf-status').value,
+                    status: document.getElementById('modal-alf-status').value || 'Not Started',
                     lead: parseInt(document.getElementById('modal-analyst').value) || null,
                     product: 1, // Adjust based on actual product ID
                     reason: document.getElementById('modal-vp').value || '',
@@ -587,6 +597,10 @@
         }
 
         async function createNewEngagement() {
+            if (!csrfToken) {
+                showToast('CSRF token is missing. Please refresh and try again.', false);
+                return;
+            }
             try {
                 showLoading();
                 const productName = document.getElementById('new-product').value;
