@@ -14,6 +14,23 @@
             max-width: 1200px;
             margin: 0 auto;
         }
+        .status-summary {
+            background: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+            display: flex;
+            gap: 15px;
+            font-size: 14px;
+            flex-wrap: wrap;
+        }
+        .status-summary span {
+            white-space: nowrap;
+        }
+        .status-summary .count {
+            font-weight: bold;
+        }
         .filters {
             display: flex;
             flex-wrap: wrap;
@@ -90,6 +107,7 @@
             justify-content: center;
             gap: 10px;
             margin: 20px 0;
+            font-size: 14px;
         }
         .pagination button {
             padding: 8px 12px;
@@ -165,6 +183,8 @@
         }
         .btn-save { background-color: #4caf50; color: white; }
         .btn-cancel { background-color: #f44336; color: white; }
+        .btn-confirm { background-color: #4caf50; color: white; }
+        .btn-decline { background-color: #f44336; color: white; }
         .toast {
             display: none;
             position: fixed;
@@ -211,6 +231,7 @@
 </head>
 <body>
     <div class="container">
+        <div class="status-summary" id="status-summary"></div>
         <div class="filters">
             <select id="version-filter"><option value="">Select Version</option></select>
             <select id="product-filter"><option value="">Select Product</option></select>
@@ -236,6 +257,7 @@
             <button class="btn-new" onclick="openNewModal()">New</button>
         </div>
         <div class="pagination">
+            <span id="total-count"></span>
             <button onclick="changePage(-1)" id="prev-page">Previous</button>
             <span id="page-info"></span>
             <button onclick="changePage(1)" id="next-page">Next</button>
@@ -316,6 +338,14 @@
                 <button class="btn-cancel" onclick="cancelNew()">Cancel</button>
             </div>
         </div>
+        <div class="modal" id="confirm-modal">
+            <div class="modal-content" style="width: 300px;">
+                <h2>Confirm</h2>
+                <p id="confirm-message"></p>
+                <button class="btn-confirm" onclick="confirmAction()">Yes</button>
+                <button class="btn-decline" onclick="declineAction()">No</button>
+            </div>
+        </div>
         <div class="toast" id="toast"></div>
         <div class="loading" id="loading">
             <div class="spinner"></div>
@@ -331,6 +361,7 @@
         let filteredData = [];
         let users = [];
         let csrfToken = '';
+        let confirmCallback = null;
 
         async function fetchCsrfToken() {
             try {
@@ -397,12 +428,14 @@
                 populateFilters();
                 renderTable();
                 updatePagination();
+                updateStatusSummary();
             } catch (error) {
                 console.error('Error fetching engagements:', error);
                 data = [];
                 filteredData = [];
                 renderTable();
                 updatePagination();
+                updateStatusSummary();
                 showToast('Failed to load engagements. Please try again.', false);
             } finally {
                 hideLoading();
@@ -464,6 +497,27 @@
             return statusMap[status] || status || '';
         }
 
+        function updateStatusSummary() {
+            const statusCounts = {
+                'Completed': 0,
+                'On Hold': 0,
+                'Blocked': 0,
+                'Cancelled': 0,
+                'Waiting for Resource': 0,
+                'Not Started': 0,
+                'In Progress': 0
+            };
+            filteredData.forEach(item => {
+                if (item.status && statusCounts.hasOwnProperty(item.status)) {
+                    statusCounts[item.status]++;
+                }
+            });
+            const summary = document.getElementById('status-summary');
+            summary.innerHTML = Object.entries(statusCounts)
+                .map(([status, count]) => `${getAlfStatusLabel(status)}: <span class="count">${count}</span>`)
+                .join(' | ');
+        }
+
         function applyFilters() {
             const version = document.getElementById('version-filter').value;
             const product = document.getElementById('product-filter').value;
@@ -489,6 +543,7 @@
             currentPage = 1;
             renderTable();
             updatePagination();
+            updateStatusSummary();
         }
 
         function resetFilters() {
@@ -505,9 +560,11 @@
             currentPage = 1;
             renderTable();
             updatePagination();
+            updateStatusSummary();
         }
 
         function updatePagination() {
+            document.getElementById('total-count').textContent = `Total: ${filteredData.length} | `;
             document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
             document.getElementById('prev-page').disabled = currentPage === 1;
             document.getElementById('next-page').disabled = currentPage === totalPages;
@@ -580,12 +637,12 @@
                 }
                 const payload = {
                     name: name,
-                    target_start: item.target_start, // Preserve original date
-                    target_end: item.target_end, // Preserve original date
+                    target_start: item.target_start,
+                    target_end: item.target_end,
                     status: status,
                     lead: parseInt(document.getElementById('modal-analyst').value) || null,
-                    product: item.product, // Use existing product ID
-                    tags: ['ALF'], // Include tags as per create
+                    product: item.product,
+                    tags: ['ALF'],
                     version: document.getElementById('modal-project').value || '',
                     reason: document.getElementById('modal-vp').value || '',
                     build_id: document.getElementById('modal-dev-mentor').value || '',
@@ -594,7 +651,7 @@
                     description: document.getElementById('modal-comments').value || ''
                 };
 
-                console.log('PUT Payload:', payload); // Debug payload
+                console.log('PUT Payload:', payload);
 
                 const response = await fetch(`${baseUrl}/api/v2/engagements/${currentEditId}/`, {
                     method: 'PUT',
@@ -607,7 +664,7 @@
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    console.error('PUT Error Response:', errorData); // Debug error response
+                    console.error('PUT Error Response:', errorData);
                     throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
                 }
 
@@ -641,11 +698,11 @@
                 }
                 const payload = {
                     name: productName,
-                    target_start: new Date().toISOString().slice(0, 26), // Format: YYYY-MM-DDTHH:MM:SS.ssssss
-                    target_end: new Date().toISOString().slice(0, 26), // Format: YYYY-MM-DDTHH:MM:SS.ssssss
+                    target_start: new Date().toISOString().slice(0, 26),
+                    target_end: new Date().toISOString().slice(0, 26),
                     status: status,
                     lead: parseInt(document.getElementById('new-analyst').value) || null,
-                    product: 1, // Adjust based on actual product ID
+                    product: 1,
                     tags: ['ALF'],
                     version: document.getElementById('new-project').value || '',
                     reason: document.getElementById('new-vp').value || '',
@@ -655,7 +712,7 @@
                     description: document.getElementById('new-comments').value || ''
                 };
 
-                console.log('POST Payload:', payload); // Debug payload
+                console.log('POST Payload:', payload);
 
                 const response = await fetch(`${baseUrl}/api/v2/engagements/`, {
                     method: 'POST',
@@ -668,7 +725,7 @@
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    console.error('POST Error Response:', errorData); // Debug error response
+                    console.error('POST Error Response:', errorData);
                     throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
                 }
 
@@ -683,16 +740,42 @@
             }
         }
 
-        function cancelEdit() {
-            if (confirm('Do you want to close this without saving?')) {
-                document.getElementById('edit-modal').classList.remove('show');
+        function showConfirmModal(message, callback) {
+            document.getElementById('confirm-message').textContent = message;
+            document.getElementById('confirm-modal').classList.add('show');
+            confirmCallback = callback;
+        }
+
+        function confirmAction() {
+            document.getElementById('confirm-modal').classList.remove('show');
+            if (confirmCallback) {
+                confirmCallback(true);
+                confirmCallback = null;
             }
         }
 
-        function cancelNew() {
-            if (confirm('Do you want to close this without creating?')) {
-                document.getElementById('new-modal').classList.remove('show');
+        function declineAction() {
+            document.getElementById('confirm-modal').classList.remove('show');
+            if (confirmCallback) {
+                confirmCallback(false);
+                confirmCallback = null;
             }
+        }
+
+        function cancelEdit() {
+            showConfirmModal('Do you want to close this without saving?', (result) => {
+                if (result) {
+                    document.getElementById('edit-modal').classList.remove('show');
+                }
+            });
+        }
+
+        function cancelNew() {
+            showConfirmModal('Do you want to close this without creating?', (result) => {
+                if (result) {
+                    document.getElementById('new-modal').classList.remove('show');
+                }
+            });
         }
 
         function showToast(message, success = true) {
