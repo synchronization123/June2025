@@ -8,9 +8,13 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# Fetch all tests with tag "mcr_jira" handling pagination
+# Arrays to track tests
+on_hold_tests = []
+pending_tests = []
+
+# Fetch all tests with tag "mcr_jira" excluding Completed and Rejected, handling pagination
 tests = []
-url = base_url + "tests/?tags=mcr_jira"
+url = base_url + "tests/?tags=mcr_jira&branch_tag__nin=Completed,Rejected"
 while url:
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
@@ -20,7 +24,7 @@ while url:
     tests.extend(data['results'])
     url = data['next']
 
-print(f"Total tests fetched: {len(tests)}")
+print(f"Total tests fetched (excluding Completed/Rejected): {len(tests)}")
 
 # Define the statuses for Pending
 pending_statuses = ["Ready for Testing", "Done", "Ready for QA", "Ready for PA"]
@@ -31,17 +35,16 @@ for test in tests:
     build_id = test.get('build_id', '')
     branch_tag = test.get('branch_tag', '')
 
-    if branch_tag in ["Completed", "Rejected"]:
-        print(f"Skipping test {test_id}: branch_tag is {branch_tag}")
-        continue
+    # Determine new branch_tag
+    new_branch_tag = "Pending" if build_id in pending_statuses else "On Hold"
 
-    if build_id in pending_statuses:
-        new_branch_tag = "Pending"
-    else:
-        new_branch_tag = "On Hold"
-
+    # Skip if no update is needed
     if branch_tag == new_branch_tag:
         print(f"No update needed for test {test_id}: branch_tag already {new_branch_tag}")
+        if new_branch_tag == "Pending":
+            pending_tests.append(test_id)
+        else:
+            on_hold_tests.append(test_id)
         continue
 
     # Update the test
@@ -50,5 +53,14 @@ for test in tests:
     response = requests.patch(update_url, headers=headers, json=payload)
     if response.status_code == 200:
         print(f"Updated test {test_id}: branch_tag set to {new_branch_tag}")
+        if new_branch_tag == "Pending":
+            pending_tests.append(test_id)
+        else:
+            on_hold_tests.append(test_id)
     else:
         print(f"Failed to update test {test_id}: {response.status_code} {response.text}")
+
+# Display summary
+print(f"\nSummary:")
+print(f"Tests marked as On Hold: {len(on_hold_tests)} {on_hold_tests}")
+print(f"Tests marked as Pending: {len(pending_tests)} {pending_tests}")
