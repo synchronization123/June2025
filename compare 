@@ -1,0 +1,42 @@
+import openpyxl
+from openpyxl.styles import PatternFill
+
+# Load the Excel workbook
+file_path = "your_excel_file.xlsx"  # Replace with your Excel file path
+workbook = openpyxl.load_workbook(file_path)
+worksheet = workbook.active  # Or specify a sheet: workbook['Sheet1']
+
+# Define green fill for highlighting
+green_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
+
+# Columns to check (D to P correspond to column indices 4 to 16)
+columns_to_check = range(4, 17)  # D=4, E=5, ..., P=16
+
+# Start from row 2
+row_start = 2
+
+# Iterate through rows until no keyword is found in column B
+for row in range(row_start, worksheet.max_row + 1):
+    keyword_cell = worksheet.cell(row=row, column=2)  # Column B
+    keyword = keyword_cell.value
+
+    # If no keyword in B, skip the row
+    if not keyword:
+        continue
+
+    # Convert keyword to lowercase for case-insensitive comparison
+    keyword = str(keyword).lower()
+
+    # Check each column from D to P
+    for col in columns_to_check:
+        cell = worksheet.cell(row=row, column=col)
+        cell_value = cell.value
+
+        # If cell has a value, perform case-insensitive substring check
+        if cell_value and keyword in str(cell_value).lower():
+            cell.fill = green_fill
+
+# Save the modified workbook
+output_file = "highlighted_excel_file.xlsx"
+workbook.save(output_file)
+print(f"Excel file saved as {output_file}")
