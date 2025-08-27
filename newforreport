@@ -73,6 +73,7 @@ def save_token():
         entry_api_token.insert(0, '*******')  # Mask token after saving
         text.insert(END, "Token saved/updated successfully.\n")
         text.see(END)
+        update_token_status()
     except PermissionError as e:
         messagebox.showerror("Error", f"Failed to save token: {str(e)}")
         text.insert(END, f"Error saving token: {str(e)}\n")
@@ -105,7 +106,19 @@ def load_token():
             return ''
     return ''
 
+def update_token_status():
+    """Update the token status label color and text."""
+    token = entry_api_token.get().strip()
+    if token == '*******' or token:
+        token_status_label.config(text="Token present", foreground="green")
+    else:
+        token_status_label.config(text="Token blank", foreground="red")
+
 def fetch_data():
+    # Disable buttons during execution
+    btn_save_token.config(state='disabled')
+    btn_fetch.config(state='disabled')
+    
     token = entry_api_token.get().strip()
     version = entry_version.get().strip()
     
@@ -114,10 +127,16 @@ def fetch_data():
         token = load_token()
         if not token:
             messagebox.showerror("Error", "No saved token found. Please enter and save a valid token.")
+            # Re-enable buttons
+            btn_save_token.config(state='normal')
+            btn_fetch.config(state='normal')
             return
     
     if not token or not version:
         messagebox.showerror("Error", "Please fill in all fields.")
+        # Re-enable buttons
+        btn_save_token.config(state='normal')
+        btn_fetch.config(state='normal')
         return
     
     # Create username.xlsx with hardcoded usernames
@@ -188,14 +207,70 @@ def fetch_data():
             text.insert(END, f"CSV Parse Error: {str(e)}\n")
             text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
             messagebox.showerror("Error", f"Failed to parse CSV response: {str(e)}")
+            # Re-enable buttons
+            btn_save_token.config(state='normal')
+            btn_fetch.config(state='normal')
+            # Delete debug file
+            if os.path.exists(DEBUG_FILE):
+                os.remove(DEBUG_FILE)
             return
         
         text.insert(END, f"Total issues fetched: {len(df)}\n")
         
         if not df.empty:
-            # Save to Excel, handle if file is open
+            # Save to temporary Excel to process
+            temp_filename = os.path.join(current_dir, f"temp_{version}_data.xlsx")
+            df.to_excel(temp_filename, index=False, engine='openpyxl')
+            
+            # Load back for processing
+            df = pd.read_excel(temp_filename)
+            
+            # Step 1: Delete columns except Issue key, Issue Type, Status, Component/s*, Comment*
+            columns_to_keep = [col for col in df.columns if col in ['Issue key', 'Issue Type', 'Status'] or col.startswith('Component/s') or col.startswith('Comment')]
+            df = df[columns_to_keep]
+            
+            # Step 2: Add Test Approach column
+            df['Test Approach'] = 'Functional Jira'
+            component_columns = [col for col in df.columns if col.startswith('Component/s')]
+            for col in component_columns:
+                df.loc[df[col].str.contains('Security|AppSecurity', na=False, case=False), 'Test Approach'] = 'Security Jira'
+            
+            # Delete component columns
+            df = df.drop(columns=component_columns)
+            
+            # Step 3: Load usernames from username.xlsx
+            if os.path.exists(USERNAME_FILE):
+                usernames_df = pd.read_excel(USERNAME_FILE)
+                usernames = usernames_df['Username'].str.lower().tolist()
+            else:
+                usernames = []
+                text.insert(END, "Warning: username.xlsx not found. Skipping comment filtering.\n")
+            
+            # Filter and append comments to a single column
+            comment_columns = [col for col in df.columns if col.startswith('Comment')]
+            df['Filtered Comments'] = ''
+            
+            for index, row in df.iterrows():
+                filtered_comments = []
+                for col in comment_columns:
+                    comment = str(row[col]) if pd.notna(row[col]) else ''
+                    if comment:
+                        # Check if comment contains any username and the version
+                        comment_lower = comment.lower()
+                        username_match = any(username in comment_lower for username in usernames)
+                        version_match = version.lower() in comment_lower
+                        if username_match and version_match:
+                            filtered_comments.append(comment)
+                        else:
+                            df.at[index, col] = ''  # Erase non-matching comments
+                df.at[index, 'Filtered Comments'] = '\n\n'.join(filtered_comments)
+            
+            # Delete original comment columns
+            df = df.drop(columns=comment_columns)
+            
+            # Save the processed DataFrame, handle if file is open
             filename = os.path.join(current_dir, f"{version}_data.xlsx")
-            text.insert(END, f"Exporting to {filename}...\n")
+            text.insert(END, f"Exporting processed data to {filename}...\n")
             while True:
                 try:
                     df.to_excel(filename, index=False, engine='openpyxl')
@@ -206,6 +281,10 @@ def fetch_data():
                     text.insert(END, f"Error: {filename} is open. Please close the file and try again.\n")
                     messagebox.showwarning("File Open", f"Please close {filename} and click OK to retry.")
                     time.sleep(5)  # Wait 5 seconds before retrying
+            
+            # Delete temporary file
+            if os.path.exists(temp_filename):
+                os.remove(temp_filename)
         else:
             text.insert(END, "No data to export.\n")
     
@@ -216,11 +295,18 @@ def fetch_data():
             text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
             text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
         messagebox.showerror("Error", f"API Request Failed: {str(e)}")
-        return
     
     except Exception as e:
         messagebox.showerror("Error", str(e))
         text.insert(END, f"Error: {str(e)}\n")
+    
+    finally:
+        # Re-enable buttons
+        btn_save_token.config(state='normal')
+        btn_fetch.config(state='normal')
+        # Delete debug file
+        if os.path.exists(DEBUG_FILE):
+            os.remove(DEBUG_FILE)
 
 # Create GUI
 root = Tk()
@@ -242,33 +328,38 @@ ttk.Label(frame, text="Jira API Token:").grid(row=0, column=0, sticky='w', pady=
 entry_api_token = ttk.Entry(frame, width=50, show='*')
 entry_api_token.grid(row=0, column=1, pady=5)
 
+# Token status label
+token_status_label = ttk.Label(frame, text="Token blank", foreground="red")
+token_status_label.grid(row=1, column=1, sticky='w', pady=5)
+
 # Load token if it exists
 try:
     saved_token = load_token()
     if saved_token:
         entry_api_token.insert(0, '*******')  # Mask token in GUI
+        update_token_status()
 except Exception as e:
     text = Text(frame, wrap='word', height=10, borderwidth=2, relief='flat')
     text.insert(END, f"Error loading token: {str(e)}\n")
-    text.grid(row=5, column=0, columnspan=2, sticky='nsew')
+    text.grid(row=6, column=0, columnspan=2, sticky='nsew')
 
 # Save Token Button
 btn_save_token = ttk.Button(frame, text="Save/Update Token", command=save_token)
-btn_save_token.grid(row=1, column=0, columnspan=2, pady=5)
+btn_save_token.grid(row=2, column=0, columnspan=2, pady=5)
 
 # Version
-ttk.Label(frame, text="Version (e.g., v12.6.3.9999900):").grid(row=2, column=0, sticky='w', pady=5)
+ttk.Label(frame, text="Version (e.g., v12.6.3.9999900):").grid(row=3, column=0, sticky='w', pady=5)
 entry_version = ttk.Entry(frame, width=50)
-entry_version.grid(row=2, column=1, pady=5)
+entry_version.grid(row=3, column=1, pady=5)
 
 # Fetch Button
 btn_fetch = ttk.Button(frame, text="Fetch and Export Data", command=fetch_data)
-btn_fetch.grid(row=3, column=0, columnspan=2, pady=10)
+btn_fetch.grid(row=4, column=0, columnspan=2, pady=10)
 
 # Console-like text area
-ttk.Label(frame, text="Console:").grid(row=4, column=0, sticky='w', pady=5)
+ttk.Label(frame, text="Console:").grid(row=5, column=0, sticky='w', pady=5)
 text_frame = ttk.Frame(frame)
-text_frame.grid(row=5, column=0, columnspan=2, sticky='nsew')
+text_frame.grid(row=6, column=0, columnspan=2, sticky='nsew')
 
 text = Text(text_frame, wrap='word', height=10, borderwidth=2, relief='flat')
 text.pack(side='left', fill='both', expand=True)
@@ -278,7 +369,7 @@ scrollbar.pack(side='right', fill='y')
 text.config(yscrollcommand=scrollbar.set)
 
 # Make the text area expand
-frame.rowconfigure(5, weight=1)
+frame.rowconfigure(6, weight=1)
 frame.columnconfigure(1, weight=1)
 
 # Smooth edges for the window
