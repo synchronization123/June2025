@@ -235,6 +235,10 @@ def generate_html_report(version, df):
             text-align: justify;
             box-sizing: border-box;
         }}
+        #description {{
+            min-height: 150px; /* Increased initial height for browser */
+            height: auto; /* Allow dynamic height */
+        }}
         select {{
             width: 100%;
             padding: 8px;
@@ -260,6 +264,22 @@ def generate_html_report(version, df):
             #save-json {{
                 display: none;
             }}
+            #description {{
+                border: none; /* Remove textarea borders for print */
+                background: transparent; /* Match page background */
+                height: auto; /* Remove fixed height */
+                resize: none; /* Prevent resizing in print */
+                overflow: visible; /* Ensure all content is visible */
+                display: block; /* Treat as block element */
+                width: 100%; /* Full width */
+                padding: 0; /* Remove padding for seamless text */
+                margin: 10px 0;
+                font-family: Arial, sans-serif; /* Match body font */
+                font-size: 14px; /* Consistent font size */
+                text-align: justify; /* Maintain justified text */
+                white-space: pre-wrap; /* Preserve line breaks */
+                line-height: 1.5; /* Improve readability */
+            }}
         }}
         .center {{
             text-align: center;
@@ -282,6 +302,12 @@ def generate_html_report(version, df):
             const storageKey = `report_${{version}}`;
             const jsonFile = '{version}.json';
             
+            // Function to adjust textarea height dynamically
+            function adjustTextareaHeight(textarea) {{
+                textarea.style.height = 'auto'; // Reset height
+                textarea.style.height = `${{textarea.scrollHeight}}px`; // Set to content height
+            }}
+            
             // Load from JSON
             fetch(jsonFile)
                 .then(response => {{
@@ -299,16 +325,20 @@ def generate_html_report(version, df):
                     const contrastSelect = document.getElementById('contrast-verification');
                     contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
                     
-                    // Load Description
+                    // Load Description and adjust textarea height
                     const descriptionTextarea = document.getElementById('description');
                     descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    adjustTextareaHeight(descriptionTextarea); // Adjust on load
                     
                     // Load VAPT Analysis
                     {vapt_load_script_str}
                     
                     // Save data to localStorage on change (real-time backup)
                     contrastSelect.addEventListener('change', saveData);
-                    descriptionTextarea.addEventListener('input', saveData);
+                    descriptionTextarea.addEventListener('input', () => {{
+                        adjustTextareaHeight(descriptionTextarea); // Adjust on input
+                        saveData();
+                    }});
                     {vapt_save_script_str}
                     
                     function saveData() {{
@@ -350,16 +380,22 @@ def generate_html_report(version, df):
                     // Fallback to localStorage or defaults
                     const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
                     
+                    // Load Contrast Verification
                     const contrastSelect = document.getElementById('contrast-verification');
                     contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
                     
+                    // Load Description and adjust textarea height
                     const descriptionTextarea = document.getElementById('description');
                     descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    adjustTextareaHeight(descriptionTextarea); // Adjust on load
                     
                     {vapt_load_script_str}
                     
                     contrastSelect.addEventListener('change', saveData);
-                    descriptionTextarea.addEventListener('input', saveData);
+                    descriptionTextarea.addEventListener('input', () => {{
+                        adjustTextareaHeight(descriptionTextarea); // Adjust on input
+                        saveData();
+                    }});
                     {vapt_save_script_str}
                     
                     function saveData() {{
@@ -614,6 +650,10 @@ def load_json_report():
             text-align: justify;
             box-sizing: border-box;
         }}
+        #description {{
+            min-height: 150px; /* Increased initial height for browser */
+            height: auto; /* Allow dynamic height */
+        }}
         select {{
             width: 100%;
             padding: 8px;
@@ -639,6 +679,22 @@ def load_json_report():
             #save-json {{
                 display: none;
             }}
+            #description {{
+                border: none; /* Remove textarea borders for print */
+                background: transparent; /* Match page background */
+                height: auto; /* Remove fixed height */
+                resize: none; /* Prevent resizing in print */
+                overflow: visible; /* Ensure all content is visible */
+                display: block; /* Treat as block element */
+                width: 100%; /* Full width */
+                padding: 0; /* Remove padding for seamless text */
+                margin: 10px 0;
+                font-family: Arial, sans-serif; /* Match body font */
+                font-size: 14px; /* Consistent font size */
+                text-align: justify; /* Maintain justified text */
+                white-space: pre-wrap; /* Preserve line breaks */
+                line-height: 1.5; /* Improve readability */
+            }}
         }}
         .center {{
             text-align: center;
@@ -661,6 +717,12 @@ def load_json_report():
             const storageKey = `report_${{version}}`;
             const jsonFile = '{version}.json';
             
+            // Function to adjust textarea height dynamically
+            function adjustTextareaHeight(textarea) {{
+                textarea.style.height = 'auto'; // Reset height
+                textarea.style.height = `${{textarea.scrollHeight}}px`; // Set to content height
+            }}
+            
             // Load from JSON
             fetch(jsonFile)
                 .then(response => {{
@@ -678,16 +740,20 @@ def load_json_report():
                     const contrastSelect = document.getElementById('contrast-verification');
                     contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
                     
-                    // Load Description
+                    // Load Description and adjust textarea height
                     const descriptionTextarea = document.getElementById('description');
                     descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    adjustTextareaHeight(descriptionTextarea); // Adjust on load
                     
                     // Load VAPT Analysis
                     {vapt_load_script_str}
                     
                     // Save data to localStorage on change (real-time backup)
                     contrastSelect.addEventListener('change', saveData);
-                    descriptionTextarea.addEventListener('input', saveData);
+                    descriptionTextarea.addEventListener('input', () => {{
+                        adjustTextareaHeight(descriptionTextarea); // Adjust on input
+                        saveData();
+                    }});
                     {vapt_save_script_str}
                     
                     function saveData() {{
@@ -729,16 +795,22 @@ def load_json_report():
                     // Fallback to localStorage or defaults
                     const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
                     
+                    // Load Contrast Verification
                     const contrastSelect = document.getElementById('contrast-verification');
                     contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
                     
+                    // Load Description and adjust textarea height
                     const descriptionTextarea = document.getElementById('description');
                     descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    adjustTextareaHeight(descriptionTextarea); // Adjust on load
                     
                     {vapt_load_script_str}
                     
                     contrastSelect.addEventListener('change', saveData);
-                    descriptionTextarea.addEventListener('input', saveData);
+                    descriptionTextarea.addEventListener('input', () => {{
+                        adjustTextareaHeight(descriptionTextarea); // Adjust on input
+                        saveData();
+                    }});
                     {vapt_save_script_str}
                     
                     function saveData() {{
