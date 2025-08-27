@@ -1,81 +1,58 @@
-#!/usr/bin/env python3
 import pandas as pd
 import requests
-import os
-from datetime import datetime
+import json
 
-# Hardcoded API token
-API_TOKEN = "your-api-token-here"  # Replace with your actual DefectDojo API token
+# Configuration
+API_URL = "https://your-defectdojo-url.com/api/v2/metadata"  # Replace with your DefectDojo URL
+TOKEN = "jsjsjjjd"  # Your API token
+EXCEL_FILE = "metadata.xlsx"  # Path to your Excel file
 
-def log(message):
-    """Log messages with timestamp to console."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
+# Headers for API request
+headers = {
+    "Authorization": f"Token {TOKEN}",
+    "Content-Type": "application/json"
+}
 
-def post_to_api(data):
-    """Post data to DefectDojo API."""
-    headers = {
-        "Authorization": f"Token {API_TOKEN}",
-        "Content-Type": "application/json"
+# Read Excel file
+try:
+    df = pd.read_excel(EXCEL_FILE)
+except Exception as e:
+    print(f"Error reading Excel file: {e}")
+    exit(1)
+
+# Validate required columns
+required_columns = ['product', 'name', 'value']
+if not all(col in df.columns for col in required_columns):
+    print(f"Excel file must contain columns: {required_columns}")
+    exit(1)
+
+# Function to add metadata via API
+def add_metadata(product, name, value):
+    payload = {
+        "product": product,
+        "name": name,
+        "value": value
     }
-    url = "https://demo.defectdojo.org/api/v2/products"
-
-    try:
-        log(f"Submitting data to {url}")
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        log(f"POST successful: {response.json()}")
-        return True
-    except requests.RequestException as e:
-        error_msg = f"API Error (POST): {e}"
-        if hasattr(e, 'response') and e.response is not None:
-            error_msg += f"\nResponse: {e.response.text}"
-        log(error_msg)
-        if hasattr(e, 'response') and e.response.status_code == 500:
-            log("Server returned 500 Internal Server Error. Check payload or server status.")
-        return False
-
-def import_excel():
-    """Import product data from data.xlsx in the script's directory."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, "data.xlsx")
-    log(f"Importing Excel file: {file_path}")
     
     try:
-        df = pd.read_excel(file_path)
-        required_columns = ["name", "description"]
-        if not all(col in df.columns for col in required_columns):
-            log("Error: Excel file must contain columns: name, description")
-            return False
+        response = requests.post(API_URL, headers=headers, data=json.dumps(payload))
+        if response.status_code == 201:
+            print(f"Successfully added metadata: {name} = {value} for product {product}")
+        else:
+            print(f"Failed to add metadata for {name}: {response.status_code} - {response.text}")
+    except requests.RequestException as e:
+        print(f"Error making API request for {name}: {e}")
 
-        success = True
-        for _, row in df.iterrows():
-            log(f"Processing product: {row['name']}")
-            data = {
-                "tags": [],
-                "name": str(row["name"]),
-                "description": str(row["description"]),
-                "prod_numeric_grade": 21747483647,
-                "enable_product_tag_inheritance": True,
-                "enable_simple_risk_acceptance": True,
-                "enable_full_risk_acceptance": True,
-                "disable_sla_breach_notifications": True,
-                "prod_type": 1,
-                "sla_configuration": 1
-            }
-            if not post_to_api(data):
-                success = False
-        return success
-    except Exception as e:
-        log(f"Import Error: {e}")
-        return False
+# Iterate through Excel rows and send API requests
+for index, row in df.iterrows():
+    product = row['product']
+    name = row['name']
+    value = row['value']
+    
+    if pd.isna(product) or pd.isna(name) or pd.isna(value):
+        print(f"Skipping row {index + 2}: Missing data in product, name, or value")
+        continue
+    
+    add_metadata(product, name, value)
 
-def main():
-    """Main function to import from data.xlsx."""
-    if import_excel():
-        log("Excel import completed successfully")
-    else:
-        log("Excel import failed")
-
-if __name__ == "__main__":
-    main()
+print("Metadata upload completed.")
