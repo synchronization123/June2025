@@ -7,16 +7,17 @@ import requests
 import os
 from tkinter import filedialog, messagebox
 import threading
+from datetime import datetime
 
 # Set appearance mode and default theme
-ctk.set_appearance_mode("System")  # Options: "Light", "Dark", "System"
-ctk.set_default_color_theme("blue")  # Options: "blue", "green", "dark-blue"
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
 
 class ProductManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Product Manager")
-        self.root.geometry("600x500")
+        self.root.geometry("600x600")
         # Set token file path to script's directory
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.token_file = os.path.join(self.script_dir, "token.json")
@@ -40,6 +41,10 @@ class ProductManagerApp:
         ctk.CTkButton(self.product_tab, text="Save Token", command=self.save_token).pack(pady=5)
 
         # Product Input Fields
+        ctk.CTkLabel(self.product_tab, text="Product ID (Optional for Update):").pack(pady=5)
+        self.id_entry = ctk.CTkEntry(self.product_tab)
+        self.id_entry.pack(pady=5)
+
         ctk.CTkLabel(self.product_tab, text="Product Name:").pack(pady=5)
         self.name_entry = ctk.CTkTextbox(self.product_tab, height=50)
         self.name_entry.pack(pady=5, fill="x")
@@ -65,14 +70,27 @@ class ProductManagerApp:
         self.progress_label = ctk.CTkLabel(self.product_tab, text="")
         self.progress_label.pack(pady=5)
 
+        # GUI Console
+        ctk.CTkLabel(self.product_tab, text="Console Output:").pack(pady=5)
+        self.console = ctk.CTkTextbox(self.product_tab, height=100, state="disabled")
+        self.console.pack(pady=5, fill="x")
+
+    def log_to_console(self, message):
+        """Log messages to the GUI console with timestamp."""
+        self.console.configure(state="normal")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.console.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.console.see(tk.END)
+        self.console.configure(state="disabled")
+
     def load_token(self):
-        """Load token from token.json in the script's directory if it exists."""
+        """Load token from token.json in the script's directory."""
         try:
             if os.path.exists(self.token_file):
                 with open(self.token_file, "r") as f:
                     return json.load(f).get("token", "")
         except Exception as e:
-            print(f"Error loading token from {self.token_file}: {e}")
+            self.log_to_console(f"Error loading token from {self.token_file}: {e}")
         return ""
 
     def save_token(self):
@@ -84,8 +102,9 @@ class ProductManagerApp:
             self.token = token
             self.update_token_status()
             messagebox.showinfo("Success", "Token saved successfully!")
+            self.log_to_console("Token saved successfully")
         except Exception as e:
-            print(f"Error saving token to {self.token_file}: {e}")
+            self.log_to_console(f"Error saving token to {self.token_file}: {e}")
             messagebox.showerror("Error", f"Failed to save token: {e}")
 
     def update_token_status(self):
@@ -100,40 +119,58 @@ class ProductManagerApp:
         return value.isdigit() or value == ""
 
     def submit_product(self):
-        """Submit product data to DefectDojo API."""
+        """Submit product data to DefectDojo API (POST or PUT)."""
         if not self.token:
             messagebox.showerror("Error", "Please save a valid API token.")
+            self.log_to_console("Error: No API token provided")
             return
 
         prod_type = self.prod_type_entry.get()
         sla_config = self.sla_entry.get()
+        product_id = self.id_entry.get()
 
         if not self.validate_number(prod_type) or not self.validate_number(sla_config):
             messagebox.showerror("Error", "Product Type and SLA Configuration must be numbers.")
+            self.log_to_console("Error: Product Type and SLA Configuration must be numbers")
             return
 
         data = {
             "name": self.name_entry.get("1.0", tk.END).strip(),
             "description": self.desc_entry.get("1.0", tk.END).strip(),
             "prod_type": int(prod_type) if prod_type else None,
-            "sla_configuration": int(sla_config) if sla_config else None
+            "sla_configuration": int(sla_config) if sla_config else None,
+            "business_criticality": "medium",  # Default value, adjust as needed
+            "platform": "web",  # Default value, adjust as needed
+            "lifecycle": "active"  # Default value, adjust as needed
         }
 
         self.progress_label.configure(text="Submitting...")
-        threading.Thread(target=self.post_to_api, args=(data,), daemon=True).start()
+        self.log_to_console("Submitting product data...")
+        threading.Thread(target=self.post_or_put_to_api, args=(data, product_id), daemon=True).start()
 
-    def post_to_api(self, data):
-        """Post data to DefectDojo API."""
-        headers = {"Authorization": f"Token {self.token}"}
-        url = "https://demo.defectdojo.org/api/v2/products"
+    def post_or_put_to_api(self, data, product_id):
+        """Post or Put data to DefectDojo API."""
+        headers = {
+            "Authorization": f"Token {self.token}",
+            "Content-Type": "application/json"
+        }
+        base_url = "https://demo.defectdojo.org/api/v2/products"
+        url = f"{base_url}/{product_id}/" if product_id else base_url
+        method = "PUT" if product_id else "POST"
+
         try:
-            response = requests.post(url, headers=headers, json=data)
+            if method == "POST":
+                response = requests.post(url, headers=headers, json=data)
+            else:
+                response = requests.put(url, headers=headers, json=data)
             response.raise_for_status()
-            print(f"API Response: {response.json()}")
             self.progress_label.configure(text="Submission Successful!", text_color="green")
+            self.log_to_console(f"{method} successful: {response.json()}")
         except requests.RequestException as e:
-            print(f"API Error: {e}")
             self.progress_label.configure(text=f"Submission Failed: {e}", text_color="red")
+            self.log_to_console(f"API Error ({method}): {e}")
+            if response.status_code == 500:
+                self.log_to_console("Server returned 500 Internal Server Error. Check payload or server status.")
         finally:
             self.root.after(3000, lambda: self.progress_label.configure(text=""))
 
@@ -144,17 +181,21 @@ class ProductManagerApp:
             return
 
         self.progress_label.configure(text="Importing...")
+        self.log_to_console(f"Importing Excel file: {file_path}")
         try:
             df = pd.read_excel(file_path)
             required_columns = ["name", "description", "prod_type", "sla_configuration"]
+            optional_columns = ["id", "business_criticality", "platform", "lifecycle"]
             if not all(col in df.columns for col in required_columns):
                 messagebox.showerror("Error", "Excel file must contain columns: name, description, prod_type, sla_configuration")
+                self.log_to_console("Error: Missing required columns in Excel file")
                 self.progress_label.configure(text="")
                 return
 
             for _, row in df.iterrows():
                 if not self.validate_number(str(row["prod_type"])) or not self.validate_number(str(row["sla_configuration"])):
                     messagebox.showerror("Error", "Product Type and SLA Configuration must be numbers.")
+                    self.log_to_console("Error: Product Type and SLA Configuration must be numbers in Excel")
                     self.progress_label.configure(text="")
                     return
 
@@ -162,13 +203,17 @@ class ProductManagerApp:
                     "name": str(row["name"]),
                     "description": str(row["description"]),
                     "prod_type": int(row["prod_type"]),
-                    "sla_configuration": int(row["sla_configuration"])
+                    "sla_configuration": int(row["sla_configuration"]),
+                    "business_criticality": str(row.get("business_criticality", "medium")),
+                    "platform": str(row.get("platform", "web")),
+                    "lifecycle": str(row.get("lifecycle", "active"))
                 }
-                self.post_to_api(data)
+                product_id = str(row.get("id", "")) if "id" in df.columns else ""
+                self.post_or_put_to_api(data, product_id)
 
         except Exception as e:
-            print(f"Import Error: {e}")
             self.progress_label.configure(text=f"Import Failed: {e}", text_color="red")
+            self.log_to_console(f"Import Error: {e}")
         finally:
             self.root.after(3000, lambda: self.progress_label.configure(text=""))
 
@@ -183,14 +228,15 @@ class ProductManagerApp:
             return
 
         self.progress_label.configure(text="Generating Template...")
+        self.log_to_console("Generating Excel template...")
         try:
-            df = pd.DataFrame(columns=["name", "description", "prod_type", "sla_configuration"])
+            df = pd.DataFrame(columns=["id", "name", "description", "prod_type", "sla_configuration", "business_criticality", "platform", "lifecycle"])
             df.to_excel(file_path, index=False)
-            print(f"Template saved to {file_path}")
             self.progress_label.configure(text="Template Generated!", text_color="green")
+            self.log_to_console(f"Template saved to {file_path}")
         except Exception as e:
-            print(f"Template Error: {e}")
             self.progress_label.configure(text=f"Template Generation Failed: {e}", text_color="red")
+            self.log_to_console(f"Template Error: {e}")
         finally:
             self.root.after(3000, lambda: self.progress_label.configure(text=""))
 
