@@ -6,11 +6,14 @@ import pandas as pd
 from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox
 import base64
 import io
+import re
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment
 
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Path for token file and debug file
+# Path for token file, debug file, and username file
 TOKEN_FILE = os.path.join(current_dir, 'token.json')
 DEBUG_FILE = os.path.join(current_dir, 'response_debug.txt')
 USERNAME_FILE = os.path.join(current_dir, 'username.xlsx')
@@ -25,7 +28,7 @@ USERNAMES = [
 ]
 
 def create_username_file():
-    """Create username.xlsx with hardcoded usernames in the current directory."""
+    """Create and hide username.xlsx with hardcoded usernames in the current directory."""
     try:
         text.insert(END, f"Creating username.xlsx...\n")
         # Check if directory is writable
@@ -39,7 +42,9 @@ def create_username_file():
         while True:
             try:
                 df.to_excel(USERNAME_FILE, index=False, engine='openpyxl')
-                text.insert(END, f"Saved username.xlsx to {USERNAME_FILE}\n")
+                # Hide the file (Windows-specific)
+                os.system(f'attrib +h "{USERNAME_FILE}"')
+                text.insert(END, f"Saved and hid username.xlsx to {USERNAME_FILE}\n")
                 text.see(END)
                 break
             except PermissionError:
@@ -113,6 +118,22 @@ def update_token_status():
         token_status_label.config(text="Token present", foreground="green")
     else:
         token_status_label.config(text="Token blank", foreground="red")
+
+def process_comments(comment):
+    """Extract username and clean comment based on pattern DD/MMM/YY HH:MM AM/PM; username; comment."""
+    if pd.isna(comment) or not comment:
+        return '', ''
+    
+    # Match pattern like "11/Aug/25 1:27 AM; sim.tim; actual comment"
+    pattern = r'^\d{2}/[A-Za-z]{3}/\d{2}\s+\d{1,2}:\d{2}\s+[AP]M;\s*([^;]+);\s*(.*)$'
+    match = re.match(pattern, comment.strip(), re.DOTALL)
+    
+    if match:
+        username = match.group(1).strip()
+        cleaned_comment = match.group(2).strip()
+        return username, cleaned_comment
+    else:
+        return '', comment.strip()
 
 def fetch_data():
     # Disable buttons during execution
@@ -249,9 +270,11 @@ def fetch_data():
             # Filter and append comments to a single column
             comment_columns = [col for col in df.columns if col.startswith('Comment')]
             df['Filtered Comments'] = ''
+            df['Changelog Reviewer'] = ''
             
             for index, row in df.iterrows():
                 filtered_comments = []
+                changelog_reviewers = []
                 for col in comment_columns:
                     comment = str(row[col]) if pd.notna(row[col]) else ''
                     if comment:
@@ -260,13 +283,36 @@ def fetch_data():
                         username_match = any(username in comment_lower for username in usernames)
                         version_match = version.lower() in comment_lower
                         if username_match and version_match:
-                            filtered_comments.append(comment)
+                            # Process comment for username and cleaned content
+                            username, cleaned_comment = process_comments(comment)
+                            if cleaned_comment:
+                                filtered_comments.append(cleaned_comment)
+                            if username:
+                                changelog_reviewers.append(username)
                         else:
                             df.at[index, col] = ''  # Erase non-matching comments
                 df.at[index, 'Filtered Comments'] = '\n\n'.join(filtered_comments)
+                df.at[index, 'Changelog Reviewer'] = ', '.join(changelog_reviewers) if changelog_reviewers else ''
             
             # Delete original comment columns
             df = df.drop(columns=comment_columns)
+            
+            # Step 4: Add Manual Secure Code Review and Manual Security Testing columns
+            df['Manual Secure Code Review'] = 'NA'
+            df['Manual Security Testing'] = 'NA'
+            
+            for index, row in df.iterrows():
+                comment = str(row['Filtered Comments']).lower() if pd.notna(row['Filtered Comments']) else ''
+                # Check for Secure code review
+                if 'secure code review: done' in comment:
+                    df.at[index, 'Manual Secure Code Review'] = 'Done'
+                elif 'secure code review: na' in comment:
+                    df.at[index, 'Manual Secure Code Review'] = 'NA'
+                # Check for Manual Testing
+                if 'manual testing: done' in comment:
+                    df.at[index, 'Manual Security Testing'] = 'Done'
+                elif 'manual testing: na' in comment:
+                    df.at[index, 'Manual Security Testing'] = 'NA'
             
             # Save the processed DataFrame, handle if file is open
             filename = os.path.join(current_dir, f"{version}_data.xlsx")
@@ -274,7 +320,17 @@ def fetch_data():
             while True:
                 try:
                     df.to_excel(filename, index=False, engine='openpyxl')
-                    text.insert(END, "Export complete.\n")
+                    
+                    # Format Filtered Comments column to justify
+                    wb = load_workbook(filename)
+                    ws = wb.active
+                    for col in ws.columns:
+                        if col[0].value == 'Filtered Comments':
+                            for cell in col[1:]:  # Skip header
+                                cell.alignment = Alignment(horizontal='justify', vertical='top', wrap_text=True)
+                    wb.save(filename)
+                    
+                    text.insert(END, "Export complete with formatted comments.\n")
                     text.see(END)
                     break
                 except PermissionError:
