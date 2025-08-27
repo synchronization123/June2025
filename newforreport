@@ -3,7 +3,7 @@ import json
 import time
 import requests
 import pandas as pd
-from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox
+from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox, Toplevel
 import base64
 import io
 import re
@@ -26,6 +26,66 @@ USERNAMES = [
     'user11', 'user12', 'user13', 'user14', 'user15',
     'user16', 'user17', 'user18', 'user19', 'user20'
 ]
+
+def show_loading_dialog(parent):
+    """Show a modal loading dialog."""
+    loading_dialog = Toplevel(parent)
+    loading_dialog.title("Processing")
+    loading_dialog.geometry("200x100")
+    loading_dialog.transient(parent)  # Make it modal
+    loading_dialog.grab_set()  # Block interaction with main window
+    ttk.Label(loading_dialog, text="Loading...", font=("Helvetica", 12)).pack(pady=20)
+    loading_dialog.resizable(False, False)
+    # Center the dialog
+    loading_dialog.update_idletasks()
+    x = parent.winfo_x() + (parent.winfo_width() - loading_dialog.winfo_width()) // 2
+    y = parent.winfo_y() + (parent.winfo_height() - loading_dialog.winfo_height()) // 2
+    loading_dialog.geometry(f"+{x}+{y}")
+    return loading_dialog
+
+def show_missing_comments_prompt(parent, missing_comments_df, version):
+    """Show a table of Jiras with no matching comments."""
+    prompt = Toplevel(parent)
+    prompt.title(f"Jiras with No Comments for {version}")
+    prompt.geometry("600x400")
+    
+    # Frame for table
+    frame = ttk.Frame(prompt, padding="10")
+    frame.pack(fill='both', expand=True)
+    
+    # Label
+    ttk.Label(frame, text=f"Jiras where comments for {version} are not found:").pack(anchor='w', pady=5)
+    
+    # Treeview for table
+    tree = ttk.Treeview(frame, columns=('Issue key', 'Status', 'Test Approach', 'Comment'), show='headings', height=10)
+    tree.heading('Issue key', text='Issue key')
+    tree.heading('Status', text='Status')
+    tree.heading('Test Approach', text='Test Approach')
+    tree.heading('Comment', text='Comment')
+    tree.column('Issue key', width=150)
+    tree.column('Status', width=100)
+    tree.column('Test Approach', width=150)
+    tree.column('Comment', width=150)
+    
+    # Scrollbar
+    scrollbar = ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    tree.pack(side='left', fill='both', expand=True)
+    scrollbar.pack(side='right', fill='y')
+    
+    # Populate table
+    for _, row in missing_comments_df.iterrows():
+        tree.insert('', 'end', values=(row['Issue key'], row['Status'], row['Test Approach'], ''))
+    
+    # Close button
+    ttk.Button(frame, text="Close", command=prompt.destroy).pack(pady=10)
+    
+    # Center the prompt
+    prompt.update_idletasks()
+    x = parent.winfo_x() + (parent.winfo_width() - prompt.winfo_width()) // 2
+    y = parent.winfo_y() + (parent.winfo_height() - prompt.winfo_height()) // 2
+    prompt.geometry(f"+{x}+{y}")
+    prompt.resizable(False, False)
 
 def create_username_file():
     """Create and hide username.xlsx with hardcoded usernames in the current directory."""
@@ -136,9 +196,11 @@ def process_comments(comment):
         return '', comment.strip()
 
 def fetch_data():
-    # Disable buttons during execution
+    # Disable buttons and show loading dialog
     btn_save_token.config(state='disabled')
     btn_fetch.config(state='disabled')
+    loading_dialog = show_loading_dialog(root)
+    root.update()
     
     token = entry_api_token.get().strip()
     version = entry_version.get().strip()
@@ -148,16 +210,18 @@ def fetch_data():
         token = load_token()
         if not token:
             messagebox.showerror("Error", "No saved token found. Please enter and save a valid token.")
-            # Re-enable buttons
+            # Re-enable buttons and destroy loading dialog
             btn_save_token.config(state='normal')
             btn_fetch.config(state='normal')
+            loading_dialog.destroy()
             return
     
     if not token or not version:
         messagebox.showerror("Error", "Please fill in all fields.")
-        # Re-enable buttons
+        # Re-enable buttons and destroy loading dialog
         btn_save_token.config(state='normal')
         btn_fetch.config(state='normal')
+        loading_dialog.destroy()
         return
     
     # Create username.xlsx with hardcoded usernames
@@ -228,9 +292,10 @@ def fetch_data():
             text.insert(END, f"CSV Parse Error: {str(e)}\n")
             text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
             messagebox.showerror("Error", f"Failed to parse CSV response: {str(e)}")
-            # Re-enable buttons
+            # Re-enable buttons and destroy loading dialog
             btn_save_token.config(state='normal')
             btn_fetch.config(state='normal')
+            loading_dialog.destroy()
             # Delete debug file
             if os.path.exists(DEBUG_FILE):
                 os.remove(DEBUG_FILE)
@@ -314,6 +379,9 @@ def fetch_data():
                 elif 'manual testing: na' in comment:
                     df.at[index, 'Manual Security Testing'] = 'NA'
             
+            # Step 5: Identify Jiras with no matching comments
+            missing_comments_df = df[df['Filtered Comments'] == ''][['Issue key', 'Status', 'Test Approach']].copy()
+            
             # Save the processed DataFrame, handle if file is open
             filename = os.path.join(current_dir, f"{version}_data.xlsx")
             text.insert(END, f"Exporting processed data to {filename}...\n")
@@ -341,6 +409,13 @@ def fetch_data():
             # Delete temporary file
             if os.path.exists(temp_filename):
                 os.remove(temp_filename)
+            
+            # Show missing comments prompt if there are any
+            if not missing_comments_df.empty:
+                show_missing_comments_prompt(root, missing_comments_df, version)
+            else:
+                text.insert(END, f"No Jiras found with missing comments for {version}.\n")
+        
         else:
             text.insert(END, "No data to export.\n")
     
@@ -357,9 +432,10 @@ def fetch_data():
         text.insert(END, f"Error: {str(e)}\n")
     
     finally:
-        # Re-enable buttons
+        # Re-enable buttons and destroy loading dialog
         btn_save_token.config(state='normal')
         btn_fetch.config(state='normal')
+        loading_dialog.destroy()
         # Delete debug file
         if os.path.exists(DEBUG_FILE):
             os.remove(DEBUG_FILE)
