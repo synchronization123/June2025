@@ -17,8 +17,8 @@ class ProductManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Product Manager")
-        self.root.geometry("600x700")  # Adjusted height for compact layout
-        self.root.minsize(500, 600)  # Minimum size for responsiveness
+        self.root.geometry("700x900")  # Adjusted for more fields
+        self.root.minsize(600, 700)
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.token_file = os.path.join(self.script_dir, "token.json")
         self.token = self.load_token()
@@ -57,6 +57,7 @@ class ProductManagerApp:
         self.input_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
         self.input_frame.grid_columnconfigure(1, weight=1)
 
+        # Input Fields
         self.id_label = ctk.CTkLabel(self.input_frame, text="Product ID (Optional):", font=("Arial", 12))
         self.id_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.id_entry = ctk.CTkEntry(self.input_frame, width=200)
@@ -72,15 +73,109 @@ class ProductManagerApp:
         self.desc_entry = ctk.CTkTextbox(self.input_frame, height=80, width=200, font=("Arial", 12))
         self.desc_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
+        self.tags_label = ctk.CTkLabel(self.input_frame, text="Tags (comma-separated):", font=("Arial", 12))
+        self.tags_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        self.tags_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.tags_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+
+        self.prod_numeric_grade_label = ctk.CTkLabel(self.input_frame, text="Product Numeric Grade:", font=("Arial", 12))
+        self.prod_numeric_grade_label.grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        self.prod_numeric_grade_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.prod_numeric_grade_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+
+        self.business_criticality_label = ctk.CTkLabel(self.input_frame, text="Business Criticality:", font=("Arial", 12))
+        self.business_criticality_label.grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        self.business_criticality_var = tk.StringVar(value="medium")
+        self.business_criticality_menu = ctk.CTkOptionMenu(self.input_frame, variable=self.business_criticality_var,
+                                                           values=["very high", "high", "medium", "low", "very low"],
+                                                           width=200)
+        self.business_criticality_menu.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
+
+        self.platform_label = ctk.CTkLabel(self.input_frame, text="Platform:", font=("Arial", 12))
+        self.platform_label.grid(row=6, column=0, padx=5, pady=5, sticky="w")
+        self.platform_var = tk.StringVar(value="web service")
+        self.platform_menu = ctk.CTkOptionMenu(self.input_frame, variable=self.platform_var,
+                                              values=["web service", "mobile", "desktop", "cloud", "other"],
+                                              width=200)
+        self.platform_menu.grid(row=6, column=1, padx=5, pady=5, sticky="ew")
+
+        self.lifecycle_label = ctk.CTkLabel(self.input_frame, text="Lifecycle:", font=("Arial", 12))
+        self.lifecycle_label.grid(row=7, column=0, padx=5, pady=5, sticky="w")
+        self.lifecycle_var = tk.StringVar(value="construction")
+        self.lifecycle_menu = ctk.CTkOptionMenu(self.input_frame, variable=self.lifecycle_var,
+                                               values=["construction", "production", "retirement", "other"],
+                                               width=200)
+        self.lifecycle_menu.grid(row=7, column=1, padx=5, pady=5, sticky="ew")
+
+        self.origin_label = ctk.CTkLabel(self.input_frame, text="Origin:", font=("Arial", 12))
+        self.origin_label.grid(row=8, column=0, padx=5, pady=5, sticky="w")
+        self.origin_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.origin_entry.grid(row=8, column=1, padx=5, pady=5, sticky="ew")
+
+        self.user_records_label = ctk.CTkLabel(self.input_frame, text="User Records:", font=("Arial", 12))
+        self.user_records_label.grid(row=9, column=0, padx=5, pady=5, sticky="w")
+        self.user_records_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.user_records_entry.grid(row=9, column=1, padx=5, pady=5, sticky="ew")
+
+        self.revenue_label = ctk.CTkLabel(self.input_frame, text="Revenue:", font=("Arial", 12))
+        self.revenue_label.grid(row=10, column=0, padx=5, pady=5, sticky="w")
+        self.revenue_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.revenue_entry.grid(row=10, column=1, padx=5, pady=5, sticky="ew")
+
         self.prod_type_label = ctk.CTkLabel(self.input_frame, text="Product Type (Number):", font=("Arial", 12))
-        self.prod_type_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        self.prod_type_label.grid(row=11, column=0, padx=5, pady=5, sticky="w")
         self.prod_type_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.prod_type_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+        self.prod_type_entry.grid(row=11, column=1, padx=5, pady=5, sticky="ew")
 
         self.sla_label = ctk.CTkLabel(self.input_frame, text="SLA Configuration (Number):", font=("Arial", 12))
-        self.sla_label.grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        self.sla_label.grid(row=12, column=0, padx=5, pady=5, sticky="w")
         self.sla_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.sla_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        self.sla_entry.grid(row=12, column=1, padx=5, pady=5, sticky="ew")
+
+        self.product_manager_label = ctk.CTkLabel(self.input_frame, text="Product Manager ID:", font=("Arial", 12))
+        self.product_manager_label.grid(row=13, column=0, padx=5, pady=5, sticky="w")
+        self.product_manager_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.product_manager_entry.grid(row=13, column=1, padx=5, pady=5, sticky="ew")
+
+        self.technical_contact_label = ctk.CTkLabel(self.input_frame, text="Technical Contact ID:", font=("Arial", 12))
+        self.technical_contact_label.grid(row=14, column=0, padx=5, pady=5, sticky="w")
+        self.technical_contact_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.technical_contact_entry.grid(row=14, column=1, padx=5, pady=5, sticky="ew")
+
+        self.team_manager_label = ctk.CTkLabel(self.input_frame, text="Team Manager ID:", font=("Arial", 12))
+        self.team_manager_label.grid(row=15, column=0, padx=5, pady=5, sticky="w")
+        self.team_manager_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.team_manager_entry.grid(row=15, column=1, padx=5, pady=5, sticky="ew")
+
+        self.regulations_label = ctk.CTkLabel(self.input_frame, text="Regulations (comma-separated IDs):", font=("Arial", 12))
+        self.regulations_label.grid(row=16, column=0, padx=5, pady=5, sticky="w")
+        self.regulations_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.regulations_entry.grid(row=16, column=1, padx=5, pady=5, sticky="ew")
+
+        # Boolean Checkboxes
+        self.external_audience_var = tk.BooleanVar(value=True)
+        self.external_audience_check = ctk.CTkCheckBox(self.input_frame, text="External Audience", variable=self.external_audience_var)
+        self.external_audience_check.grid(row=17, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        self.internet_accessible_var = tk.BooleanVar(value=True)
+        self.internet_accessible_check = ctk.CTkCheckBox(self.input_frame, text="Internet Accessible", variable=self.internet_accessible_var)
+        self.internet_accessible_check.grid(row=18, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        self.product_tag_inheritance_var = tk.BooleanVar(value=True)
+        self.product_tag_inheritance_check = ctk.CTkCheckBox(self.input_frame, text="Enable Product Tag Inheritance", variable=self.product_tag_inheritance_var)
+        self.product_tag_inheritance_check.grid(row=19, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        self.simple_risk_acceptance_var = tk.BooleanVar(value=True)
+        self.simple_risk_acceptance_check = ctk.CTkCheckBox(self.input_frame, text="Enable Simple Risk Acceptance", variable=self.simple_risk_acceptance_var)
+        self.simple_risk_acceptance_check.grid(row=20, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        self.full_risk_acceptance_var = tk.BooleanVar(value=True)
+        self.full_risk_acceptance_check = ctk.CTkCheckBox(self.input_frame, text="Enable Full Risk Acceptance", variable=self.full_risk_acceptance_var)
+        self.full_risk_acceptance_check.grid(row=21, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        self.sla_breach_notifications_var = tk.BooleanVar(value=True)
+        self.sla_breach_notifications_check = ctk.CTkCheckBox(self.input_frame, text="Disable SLA Breach Notifications", variable=self.sla_breach_notifications_var)
+        self.sla_breach_notifications_check.grid(row=22, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         # Button Frame
         self.button_frame = ctk.CTkFrame(self.product_tab)
@@ -143,8 +238,14 @@ class ProductManagerApp:
             self.token_status.configure(text="No Token", text_color="red")
 
     def validate_number(self, value):
-        """Validate if input is a number."""
-        return value.isdigit() or value == ""
+        """Validate if input is a number (integer or float)."""
+        if value == "":
+            return True
+        try:
+            float(value)  # Allow integers and floats
+            return True
+        except ValueError:
+            return False
 
     def submit_product(self):
         """Submit product data to DefectDojo API (POST or PUT)."""
@@ -155,23 +256,55 @@ class ProductManagerApp:
 
         prod_type = self.prod_type_entry.get()
         sla_config = self.sla_entry.get()
-        product_id = self.id_entry.get()
+        prod_numeric_grade = self.prod_numeric_grade_entry.get()
+        user_records = self.user_records_entry.get()
+        revenue = self.revenue_entry.get()
+        product_manager = self.product_manager_entry.get()
+        technical_contact = self.technical_contact_entry.get()
+        team_manager = self.team_manager_entry.get()
 
-        if not self.validate_number(prod_type) or not self.validate_number(sla_config):
-            messagebox.showerror("Error", "Product Type and SLA Configuration must be numbers.")
-            self.log_to_console("Error: Product Type and SLA Configuration must be numbers")
-            return
+        # Validate numeric fields
+        for field, value in [
+            ("Product Type", prod_type),
+            ("SLA Configuration", sla_config),
+            ("Product Numeric Grade", prod_numeric_grade),
+            ("User Records", user_records),
+            ("Revenue", revenue),
+            ("Product Manager ID", product_manager),
+            ("Technical Contact ID", technical_contact),
+            ("Team Manager ID", team_manager)
+        ]:
+            if value and not self.validate_number(value):
+                messagebox.showerror("Error", f"{field} must be a number.")
+                self.log_to_console(f"Error: {field} must be a number")
+                return
 
         data = {
+            "tags": [tag.strip() for tag in self.tags_entry.get().split(",") if tag.strip()],
             "name": self.name_entry.get("1.0", tk.END).strip(),
             "description": self.desc_entry.get("1.0", tk.END).strip(),
-            "prod_type": int(prod_type) if prod_type else None,
-            "sla_configuration": int(sla_config) if sla_config else None,
-            "business_criticality": "medium",
-            "platform": "web",
-            "lifecycle": "active"
+            "prod_numeric_grade": int(float(prod_numeric_grade)) if prod_numeric_grade else None,
+            "business_criticality": self.business_criticality_var.get(),
+            "platform": self.platform_var.get(),
+            "lifecycle": self.lifecycle_var.get(),
+            "origin": self.origin_entry.get().strip() or "third party library",
+            "user_records": int(float(user_records)) if user_records else None,
+            "revenue": revenue or None,
+            "external_audience": self.external_audience_var.get(),
+            "internet_accessible": self.internet_accessible_var.get(),
+            "enable_product_tag_inheritance": self.product_tag_inheritance_var.get(),
+            "enable_simple_risk_acceptance": self.simple_risk_acceptance_var.get(),
+            "enable_full_risk_acceptance": self.full_risk_acceptance_var.get(),
+            "disable_sla_breach_notifications": self.sla_breach_notifications_var.get(),
+            "product_manager": int(float(product_manager)) if product_manager else 0,
+            "technical_contact": int(float(technical_contact)) if technical_contact else 0,
+            "team_manager": int(float(team_manager)) if team_manager else 0,
+            "prod_type": int(float(prod_type)) if prod_type else 0,
+            "sla_configuration": int(float(sla_config)) if sla_config else 0,
+            "regulations": [int(r.strip()) for r in self.regulations_entry.get().split(",") if r.strip() and self.validate_number(r.strip())]
         }
 
+        product_id = self.id_entry.get()
         self.progress_label.configure(text="Submitting...")
         self.log_to_console("Submitting product data...")
         threading.Thread(target=self.post_or_put_to_api, args=(data, product_id), daemon=True).start()
@@ -195,9 +328,12 @@ class ProductManagerApp:
             self.progress_label.configure(text="Submission Successful!", text_color="green")
             self.log_to_console(f"{method} successful: {response.json()}")
         except requests.RequestException as e:
+            error_msg = f"API Error ({method}): {e}"
+            if hasattr(e, 'response') and e.response is not None:
+                error_msg += f"\nResponse: {e.response.text}"
             self.progress_label.configure(text=f"Submission Failed: {e}", text_color="red")
-            self.log_to_console(f"API Error ({method}): {e}")
-            if response.status_code == 500:
+            self.log_to_console(error_msg)
+            if hasattr(e, 'response') and e.response.status_code == 500:
                 self.log_to_console("Server returned 500 Internal Server Error. Check payload or server status.")
         finally:
             self.root.after(3000, lambda: self.progress_label.configure(text=""))
@@ -213,7 +349,12 @@ class ProductManagerApp:
         try:
             df = pd.read_excel(file_path)
             required_columns = ["name", "description", "prod_type", "sla_configuration"]
-            optional_columns = ["id", "business_criticality", "platform", "lifecycle"]
+            optional_columns = [
+                "id", "tags", "prod_numeric_grade", "business_criticality", "platform", "lifecycle",
+                "origin", "user_records", "revenue", "external_audience", "internet_accessible",
+                "enable_product_tag_inheritance", "enable_simple_risk_acceptance", "enable_full_risk_acceptance",
+                "disable_sla_breach_notifications", "product_manager", "technical_contact", "team_manager", "regulations"
+            ]
             if not all(col in df.columns for col in required_columns):
                 messagebox.showerror("Error", "Excel file must contain columns: name, description, prod_type, sla_configuration")
                 self.log_to_console("Error: Missing required columns in Excel file")
@@ -221,22 +362,39 @@ class ProductManagerApp:
                 return
 
             for _, row in df.iterrows():
-                if not self.validate_number(str(row["prod_type"])) or not self.validate_number(str(row["sla_configuration"])):
-                    messagebox.showerror("Error", "Product Type and SLA Configuration must be numbers.")
-                    self.log_to_console("Error: Product Type and SLA Configuration must be numbers in Excel")
-                    self.progress_label.configure(text="")
-                    return
+                for field in ["prod_type", "sla_configuration", "prod_numeric_grade", "user_records", "revenue",
+                              "product_manager", "technical_contact", "team_manager"]:
+                    if field in row and pd.notna(row[field]) and not self.validate_number(str(row[field])):
+                        messagebox.showerror("Error", f"{field} must be a number in Excel.")
+                        self.log_to_console(f"Error: {field} must be a number in Excel")
+                        self.progress_label.configure(text="")
+                        return
 
                 data = {
+                    "tags": [tag.strip() for tag in str(row.get("tags", "")).split(",") if tag.strip()],
                     "name": str(row["name"]),
                     "description": str(row["description"]),
-                    "prod_type": int(row["prod_type"]),
-                    "sla_configuration": int(row["sla_configuration"]),
+                    "prod_numeric_grade": int(float(row["prod_numeric_grade"])) if pd.notna(row.get("prod_numeric_grade")) else None,
                     "business_criticality": str(row.get("business_criticality", "medium")),
-                    "platform": str(row.get("platform", "web")),
-                    "lifecycle": str(row.get("lifecycle", "active"))
+                    "platform": str(row.get("platform", "web service")),
+                    "lifecycle": str(row.get("lifecycle", "construction")),
+                    "origin": str(row.get("origin", "third party library")),
+                    "user_records": int(float(row["user_records"])) if pd.notna(row.get("user_records")) else None,
+                    "revenue": str(row.get("revenue", "")) or None,
+                    "external_audience": bool(row.get("external_audience", True)),
+                    "internet_accessible": bool(row.get("internet_accessible", True)),
+                    "enable_product_tag_inheritance": bool(row.get("enable_product_tag_inheritance", True)),
+                    "enable_simple_risk_acceptance": bool(row.get("enable_simple_risk_acceptance", True)),
+                    "enable_full_risk_acceptance": bool(row.get("enable_full_risk_acceptance", True)),
+                    "disable_sla_breach_notifications": bool(row.get("disable_sla_breach_notifications", True)),
+                    "product_manager": int(float(row["product_manager"])) if pd.notna(row.get("product_manager")) else 0,
+                    "technical_contact": int(float(row["technical_contact"])) if pd.notna(row.get("technical_contact")) else 0,
+                    "team_manager": int(float(row["team_manager"])) if pd.notna(row.get("team_manager")) else 0,
+                    "prod_type": int(float(row["prod_type"])) if pd.notna(row["prod_type"]) else 0,
+                    "sla_configuration": int(float(row["sla_configuration"])) if pd.notna(row["sla_configuration"]) else 0,
+                    "regulations": [int(r.strip()) for r in str(row.get("regulations", "")).split(",") if r.strip() and self.validate_number(r.strip())]
                 }
-                product_id = str(row.get("id", "")) if "id" in df.columns else ""
+                product_id = str(row.get("id", "")) if "id" in df.columns and pd.notna(row["id"]) else ""
                 self.post_or_put_to_api(data, product_id)
 
         except Exception as e:
@@ -258,7 +416,14 @@ class ProductManagerApp:
         self.progress_label.configure(text="Generating Template...")
         self.log_to_console("Generating Excel template...")
         try:
-            df = pd.DataFrame(columns=["id", "name", "description", "prod_type", "sla_configuration", "business_criticality", "platform", "lifecycle"])
+            columns = [
+                "id", "tags", "name", "description", "prod_numeric_grade", "business_criticality",
+                "platform", "lifecycle", "origin", "user_records", "revenue", "external_audience",
+                "internet_accessible", "enable_product_tag_inheritance", "enable_simple_risk_acceptance",
+                "enable_full_risk_acceptance", "disable_sla_breach_notifications", "product_manager",
+                "technical_contact", "team_manager", "prod_type", "sla_configuration", "regulations"
+            ]
+            df = pd.DataFrame(columns=columns)
             df.to_excel(file_path, index=False)
             self.progress_label.configure(text="Template Generated!", text_color="green")
             self.log_to_console(f"Template saved to {file_path}")
