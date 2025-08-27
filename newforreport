@@ -4,6 +4,8 @@ import time
 import requests
 import pandas as pd
 from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox
+import base64
+import io
 
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,9 +13,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 # Path for token file and debug file
 TOKEN_FILE = os.path.join(current_dir, 'token.json')
 DEBUG_FILE = os.path.join(current_dir, 'response_debug.txt')
-
-# Batch size for fetching issues
-BATCH_SIZE = 100
 
 def save_token():
     """Save or update the entered token to token.json and hide the file."""
@@ -66,23 +65,6 @@ def load_token():
             return ''
     return ''
 
-def flatten_dict(d, parent_key='', sep='.'):
-    """Flatten a nested dictionary into a flat dictionary with concatenated keys."""
-    items = []
-    for key, value in d.items():
-        new_key = f"{parent_key}{sep}{key}" if parent_key else key
-        if isinstance(value, dict):
-            items.extend(flatten_dict(value, new_key, sep).items())
-        elif isinstance(value, list):
-            for i, item in enumerate(value):
-                if isinstance(item, dict):
-                    items.extend(flatten_dict(item, f"{new_key}[{i}]", sep).items())
-                else:
-                    items.append((f"{new_key}[{i}]", str(item)))
-        else:
-            items.append((new_key, str(value) if value is not None else ''))
-    return dict(items)
-
 def fetch_data():
     token = entry_api_token.get().strip()
     version = entry_version.get().strip()
@@ -114,106 +96,78 @@ def fetch_data():
     text.insert(END, f"Formed JQL: {jql}\n")
     
     try:
-        # Prepare authentication header (Bearer token)
-        headers = {
+        # Try Bearer token authentication
+        headers_bearer = {
             'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
+            'Accept': 'text/csv'
         }
         
-        # Jira REST API endpoint
-        url = 'https://jira.crm.com/rest/api/3/search'
+        # CSV export endpoint
+        url = f'https://jira.crm.com/sr/jira.issueviews:searchrequest-csv-all-fields/temp/SearchRequest.csv?jqlQuery={jql}'
         
-        data = []
-        all_fields = set()
-        start_at = 0
-        total_issues = 0
+        text.insert(END, "Attempting fetch with Bearer token...\n")
+        response = requests.get(url, headers=headers_bearer)
+        text.insert(END, f"API Response Status (Bearer): {response.status_code}\n")
         
-        while True:
-            text.insert(END, f"Fetching issues {start_at + 1} to {start_at + BATCH_SIZE}...\n")
-            payload = {
-                'jql': jql,
-                'startAt': start_at,
-                'maxResults': BATCH_SIZE,
-                'fields': ['*all']  # Fetch all fields
+        # Save raw response to debug file
+        with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
+            debug_file.write(response.text)
+        text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
+        
+        if response.status_code != 200:
+            # Try Basic Auth as a fallback
+            text.insert(END, "Bearer token failed, attempting Basic Auth...\n")
+            # Assuming email is not required, but token is used as password
+            # Replace 'user@example.com' with your Jira email if needed
+            auth_string = f"user@example.com:{token}"
+            auth_bytes = auth_string.encode('ascii')
+            auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
+            headers_basic = {
+                'Authorization': f'Basic {auth_base64}',
+                'Accept': 'text/csv'
             }
             
-            try:
-                response = requests.post(url, headers=headers, json=payload)
-                text.insert(END, f"API Response Status: {response.status_code}\n")
-                
-                # Save raw response to debug file
-                with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
-                    debug_file.write(response.text)
-                text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
-                
-                if response.status_code != 200:
-                    text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-                    response.raise_for_status()
-                
-                try:
-                    result = response.json()
-                except json.JSONDecodeError as e:
-                    text.insert(END, f"JSON Parse Error: {str(e)}\n")
-                    text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-                    messagebox.showerror("Error", f"Failed to parse JSON response: {str(e)}")
-                    return
-                
-                issues = result.get('issues', [])
-                
-                if not issues:
-                    break
-                
-                total_issues += len(issues)
-                text.insert(END, f"Fetched {len(issues)} issues in this batch. Total so far: {total_issues}\n")
-                
-                # Process issues in the batch
-                for issue in issues:
-                    # Flatten the fields dictionary
-                    flattened_issue = flatten_dict(issue['fields'])
-                    flattened_issue['key'] = issue['key']  # Always include issue key
-                    data.append(flattened_issue)
-                    # Update set of all fields
-                    all_fields.update(flattened_issue.keys())
-                
-                start_at += BATCH_SIZE
-                text.see(END)  # Scroll to the latest console output
-                root.update()  # Update GUI to keep it responsive
-                
-                # Add 15-second delay between batch requests
-                if issues:  # Only delay if more issues are expected
-                    text.insert(END, "Waiting 15 seconds before next batch...\n")
-                    text.see(END)
-                    time.sleep(15)
+            response = requests.get(url, headers=headers_basic)
+            text.insert(END, f"API Response Status (Basic): {response.status_code}\n")
             
-            except requests.exceptions.RequestException as e:
-                text.insert(END, f"API Request Error: {str(e)}\n")
-                if 'response' in locals():
-                    text.insert(END, f"Status Code: {response.status_code}\n")
-                    text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-                    text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
-                messagebox.showerror("Error", f"API Request Failed: {str(e)}")
-                return
-        
-        text.insert(END, f"Total issues fetched: {total_issues}\n")
-        
-        if data:
-            # Create DataFrame with all fields
-            df = pd.DataFrame(data)
-            # Ensure all fields are present in DataFrame, filling missing values with empty strings
-            for field in all_fields:
-                if field not in df.columns:
-                    df[field] = ''
-            # Reorder columns to have 'key' first
-            cols = ['key'] + [col for col in df.columns if col != 'key']
-            df = df[cols]
+            # Save raw response to debug file
+            with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
+                debug_file.write(response.text)
+            text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
             
+            if response.status_code != 200:
+                text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
+                response.raise_for_status()
+        
+        # Parse CSV response
+        try:
+            df = pd.read_csv(io.StringIO(response.text))
+            text.insert(END, f"Fetched {len(df)} issues.\n")
+        except pd.errors.ParserError as e:
+            text.insert(END, f"CSV Parse Error: {str(e)}\n")
+            text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
+            messagebox.showerror("Error", f"Failed to parse CSV response: {str(e)}")
+            return
+        
+        text.insert(END, f"Total issues fetched: {len(df)}\n")
+        
+        if not df.empty:
+            # Save to Excel
             filename = os.path.join(current_dir, f"{version}_data.xlsx")
             text.insert(END, f"Exporting to {filename}...\n")
-            # Overwrite the file if it exists
             df.to_excel(filename, index=False, engine='openpyxl')
             text.insert(END, "Export complete.\n")
         else:
             text.insert(END, "No data to export.\n")
+    
+    except requests.exceptions.RequestException as e:
+        text.insert(END, f"API Request Error: {str(e)}\n")
+        if 'response' in locals():
+            text.insert(END, f"Status Code: {response.status_code}\n")
+            text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
+            text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
+        messagebox.showerror("Error", f"API Request Failed: {str(e)}")
+        return
     
     except Exception as e:
         messagebox.showerror("Error", str(e))
