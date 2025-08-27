@@ -10,7 +10,7 @@ import re
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 import webbrowser
-import pdfkit  # Added for PDF generation
+import pdfkit  # For PDF generation
 
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -165,19 +165,19 @@ def generate_html_report(version, df):
     vapt_statuses = {cat: ttk.Combobox(frame, values=['Found', 'Not Found', 'NA'], state='readonly', width=15) for cat in VAPT_CATEGORIES}
     vapt_comments = {cat: ttk.Entry(frame, width=30) for cat in VAPT_CATEGORIES}
     
-    # Summary Section
-    ttk.Label(frame, text="Summary", font=("Helvetica", 12, "bold")).pack(anchor='w', pady=10)
-    ttk.Label(frame, text="Contrast Verification:").pack(anchor='w', padx=5)
-    contrast_verification.pack(fill='x', padx=5, pady=5)
-    ttk.Label(frame, text="Description:").pack(anchor='w', padx=5)
-    description.pack(fill='x', padx=5, pady=5)
+    # Summary Section using grid
+    ttk.Label(frame, text="Summary", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky='w', pady=10, padx=5)
+    ttk.Label(frame, text="Contrast Verification:").grid(row=1, column=0, sticky='w', padx=5)
+    contrast_verification.grid(row=2, column=0, sticky='ew', padx=5, pady=5)
+    ttk.Label(frame, text="Description:").grid(row=3, column=0, sticky='w', padx=5)
+    description.grid(row=4, column=0, sticky='ew', padx=5, pady=5)
     
-    # Security Analysis Section
-    ttk.Label(frame, text="Security Analysis", font=("Helvetica", 12, "bold")).pack(anchor='w', pady=10)
+    # Security Analysis Section using grid
+    ttk.Label(frame, text="Security Analysis", font=("Helvetica", 12, "bold")).grid(row=5, column=0, sticky='w', pady=10, padx=5)
     
     # VAPT Table
     table_frame = ttk.Frame(frame)
-    table_frame.pack(fill='x', padx=5, pady=5)
+    table_frame.grid(row=6, column=0, sticky='ew', padx=5, pady=5)
     
     ttk.Label(table_frame, text="Sr. No.", font=("Helvetica", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky='w')
     ttk.Label(table_frame, text="Category", font=("Helvetica", 10, "bold")).grid(row=0, column=1, padx=5, pady=5, sticky='w')
@@ -193,8 +193,11 @@ def generate_html_report(version, df):
     
     table_frame.columnconfigure(3, weight=1)  # Make Comment column expandable
     
-    # Save and Generate Report Button
-    ttk.Button(frame, text="Save and Generate PDF Report", command=lambda: save_and_generate()).pack(pady=15)
+    # Save and Generate PDF Report Button using grid
+    ttk.Button(frame, text="Save and Generate PDF Report", command=lambda: save_and_generate()).grid(row=7, column=0, pady=15)
+    
+    # Configure frame column to expand
+    frame.columnconfigure(0, weight=1)
     
     # Save and Generate Report Logic
     def save_and_generate():
@@ -426,7 +429,7 @@ def generate_html_report(version, df):
     # Center the window
     report_window.update_idletasks()
     x = root.winfo_x() + (root.winfo_width() - report_window.winfo_width()) // 2
-    y = root.winfo_y() + (parent.winfo_height() - report_window.winfo_height()) // 2
+    y = root.winfo_y() + (root.winfo_height() - report_window.winfo_height()) // 2
     report_window.geometry(f"+{x}+{y}")
     report_window.resizable(False, False)
 
@@ -640,7 +643,7 @@ def load_json_report():
         while True:
             try:
                 # Specify wkhtmltopdf path if not in system PATH
-                config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")  # Update path for your system
+                config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")  # Update path
                 pdfkit.from_string(html_content, pdf_filename, configuration=config)
                 text.insert(END, f"Generated PDF report: {pdf_filename}\n")
                 webbrowser.open(f"file://{os.path.abspath(pdf_filename)}")
@@ -994,6 +997,7 @@ def fetch_data():
             else:
                 text.insert(END, f"No Jiras found with missing comments for {version}.\n")
             
+            # Corrected button configuration
             btn_generate_report.config(state='normal', command=lambda: generate_html_report(version, df))
         
         else:
