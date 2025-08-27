@@ -131,99 +131,6 @@ def generate_html_report(version, df):
     """Show a form to generate the HTML report with all fields and scrollable VAPT table."""
     report_window = Toplevel(root)
     report_window.title(f"Generate {version} Build Report")
-    report_window.geometry("800x600")
-    
-    # Main frame with scrollable canvas
-    main_frame = ttk.Frame(report_window)
-    main_frame.pack(fill='both', expand=True)
-    
-    canvas = Canvas(main_frame)
-    canvas.pack(side='left', fill='both', expand=True)
-    
-    scrollbar = ttk.Scrollbar(main_frame, orient='vertical', command=canvas.yview)
-    scrollbar.pack(side='right', fill='y')
-    
-    frame = ttk.Frame(canvas)
-    canvas_frame = canvas.create_window((0, 0), window=frame, anchor='nw')
-    
-    # Variables for form inputs
-    contrast_verification = ttk.Entry(frame)
-    description = Text(frame, height=5, width=50)
-    vapt_statuses = {cat: ttk.Combobox(frame, values=['Found', 'Not Found', 'NA'], state='readonly') for cat in VAPT_CATEGORIES}
-    vapt_comments = {cat: ttk.Entry(frame) for cat in VAPT_CATEGORIES}
-    
-    # Summary Section
-    ttk.Label(frame, text="Summary", font=("Helvetica", 12, "bold")).pack(anchor='w', pady=5)
-    ttk.Label(frame, text="Contrast Verification:").pack(anchor='w')
-    contrast_verification.pack(fill='x', pady=5)
-    ttk.Label(frame, text="Description:").pack(anchor='w')
-    description.pack(fill='x', pady=5)
-    
-    # Security Analysis Section
-    ttk.Label(frame, text="Security Analysis", font=("Helvetica", 12, "bold")).pack(anchor='w', pady=10)
-    
-    # VAPT Table
-    table_frame = ttk.Frame(frame)
-    table_frame.pack(fill='x', pady=5)
-    
-    ttk.Label(table_frame, text="Sr. No.", font=("Helvetica", 10, "bold")).grid(row=0, column=0, padx=5, pady=5)
-    ttk.Label(table_frame, text="Category", font=("Helvetica", 10, "bold")).grid(row=0, column=1, padx=5, pady=5)
-    ttk.Label(table_frame, text="Status", font=("Helvetica", 10, "bold")).grid(row=0, column=2, padx=5, pady=5)
-    ttk.Label(table_frame, text="Comment", font=("Helvetica", 10, "bold")).grid(row=0, column=3, padx=5, pady=5)
-    
-    for i, category in enumerate(VAPT_CATEGORIES, 1):
-        ttk.Label(table_frame, text=str(i)).grid(row=i, column=0, padx=5, pady=5)
-        ttk.Label(table_frame, text=category).grid(row=i, column=1, padx=5, pady=5, sticky='w')
-        vapt_statuses[category].grid(row=i, column=2, padx=5, pady=5)
-        vapt_statuses[category].set('NA')
-        vapt_comments[category].grid(row=i, column=3, padx=5, pady=5, sticky='ew')
-    
-    # Save and Generate Report Button
-    ttk.Button(frame, text="Save and Generate Report", command=lambda: save_and_generate()).pack(pady=10)
-    
-    # Update canvas scroll region
-    def configure_canvas(event=None):
-        canvas.configure(scrollregion=canvas.bbox("all"))
-    
-    frame.bind('<Configure>', configure_canvas)
-    canvas.configure(yscrollcommand=scrollbar.set)
-    
-    # Ensure the canvas resizes with the window
-    def on_frame_configure(event=None):
-        canvas.itemconfig(canvas_frame, width=canvas.winfo_width())
-    
-    canvas.bind('<Configure>', on_frame_configure)
-    
-    # Save and Generate Report
-    def save_and_generate():
-        report_data = {
-            'version': version,
-            'contrast_verification': contrast_verification.get(),
-            'description': description.get("1.0", END).strip(),
-            'vapt_analysis': {cat: {'status': vapt_statuses[cat].get(), 'comment': vapt_comments[cat].get()} for cat in VAPT_CATEGORIES}
-        }
-        
- “
-
-System: It appears that the response was cut off, likely due to exceeding the maximum token limit. I'll provide a complete and concise fix for the `generate_html_report` function to ensure the UI displays all required elements (Contrast Verification, Description, 20 VAPT categories with dropdowns and comment entries, and the "Save and Generate Report" button) while retaining the previous fixes for file naming (`{version}.html`, `{version}.json`) and the f-string syntax error. I'll also ensure the rest of the script remains functional.
-
-### Fix for `generate_html_report`
-The issue with the incomplete UI is likely due to improper layout management in the `generate_html_report` function, particularly with the scrollable VAPT table. The previous script used a `Canvas` with a `Frame`, but the configuration may not have properly handled the scrollable area or widget visibility. I'll:
-- Use a `Canvas` with a `Frame` for the entire form to ensure all elements (Summary section, Security Analysis table, and button) are scrollable and visible.
-- Ensure the VAPT table displays all 20 categories with `Sr. No.`, `Category`, `Status` (dropdown), and `Comment` (entry).
-- Place the "Save and Generate Report" button at the bottom of the form.
-- Increase the window size to better accommodate the content.
-- Retain the f-string fix by using `Formatted Comments`.
-- Maintain file outputs as `{version}.html` and `{version}.json`.
-
-### Corrected `generate_html_report` Function
-Below is the corrected `generate_html_report` function, which replaces the one in the previous script. The rest of the script (including imports, other functions, and GUI setup) remains unchanged unless specified.
-
-```python
-def generate_html_report(version, df):
-    """Show a form to generate the HTML report with all fields and scrollable VAPT table."""
-    report_window = Toplevel(root)
-    report_window.title(f"Generate {version} Build Report")
     report_window.geometry("900x700")  # Increased size for better visibility
     
     # Main frame with scrollable canvas
@@ -505,3 +412,643 @@ def generate_html_report(version, df):
     y = root.winfo_y() + (root.winfo_height() - report_window.winfo_height()) // 2
     report_window.geometry(f"+{x}+{y}")
     report_window.resizable(False, False)
+
+def load_json_report():
+    """Load a JSON report and regenerate HTML."""
+    json_file = filedialog.askopenfilename(
+        title="Select JSON Report",
+        filetypes=[("JSON files", "*.json")],
+        initialdir=current_dir
+    )
+    if not json_file:
+        return
+    
+    try:
+        with open(json_file, 'r', encoding='utf-8') as f:
+            report_data = json.load(f)
+        
+        version = report_data.get('version', 'Unknown')
+        excel_file = os.path.join(current_dir, f"{version}_data.xlsx")
+        if not os.path.exists(excel_file):
+            text.insert(END, f"Error: {excel_file} not found.\n")
+            messagebox.showerror("Error", f"Excel file {excel_file} not found.")
+            return
+        
+        df = pd.read_excel(excel_file)
+        
+        # Preprocess comments to avoid f-string backslash issue
+        df['Formatted Comments'] = df['Filtered Comments'].apply(
+            lambda x: x.replace('\n', '<br>') if pd.notna(x) else ''
+        )
+        
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{version} Build Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{version} Build Report</h1>
+        
+        <div class="section">
+            <h2>Summary</h2>
+            <table>
+                <tr>
+                    <th>Build</th>
+                    <th>Date</th>
+                    <th colspan="2">Total Changelog</th>
+                    <th>Contrast Verification</th>
+                </tr>
+                <tr>
+                    <th></th>
+                    <th></th>
+                    <th>Functional Jira</th>
+                    <th>Security Jira</th>
+                    <th></th>
+                </tr>
+                <tr>
+                    <td>{version}</td>
+                    <td>{datetime.now().strftime('%d-%b-%Y')}</td>
+                    <td>{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
+                    <td>{len(df[df['Test Approach'] == 'Security Jira'])}</td>
+                    <td>{report_data['contrast_verification']}</td>
+                </tr>
+            </table>
+            <h3>Description</h3>
+            <textarea readonly>{report_data['description']}</textarea>
+        </div>
+        
+        <div class="section">
+            <h2>Security Analysis</h2>
+            <table>
+                <tr>
+                    <th>Sr. No.</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                </tr>
+"""
+        for i, cat in enumerate(VAPT_CATEGORIES, 1):
+            html_content += f"""
+                <tr>
+                    <td>{i}</td>
+                    <td>{cat}</td>
+                    <td>{report_data['vapt_analysis'][cat]['status']}</td>
+                    <td>{report_data['vapt_analysis'][cat]['comment']}</td>
+                </tr>
+"""
+        html_content += """
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Build Table</h2>
+            <table>
+                <tr>
+                    <th>Build</th>
+                    <th>Date</th>
+                    <th>Total no of Jiras</th>
+                </tr>
+                <tr>
+                    <td>{version}</td>
+                    <td>{datetime.now().strftime('%d-%b-%Y')}</td>
+                    <td>{len(df)}</td>
+                </tr>
+            </table>
+            
+            <h3>Changelog Details</h3>
+            <table>
+                <tr>
+                    <th>Changelog Reviewer</th>
+                    <th>Issue key</th>
+                    <th>Test Approach</th>
+                    <th>Manual Code Review</th>
+                    <th>Manual Security Testing</th>
+                    <th>Remark/Comment</th>
+                </tr>
+"""
+        for _, row in df.iterrows():
+            html_content += f"""
+                <tr>
+                    <td>{row['Changelog Reviewer']}</td>
+                    <td>{row['Issue key']}</td>
+                    <td>{row['Test Approach']}</td>
+                    <td>{row['Manual Secure Code Review']}</td>
+                    <td>{row['Manual Security Testing']}</td>
+                    <td>{row['Formatted Comments']}</td>
+                </tr>
+"""
+        html_content += """
+            </table>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        html_filename = os.path.join(current_dir, f"{version}.html")
+        while True:
+            try:
+                with open(html_filename, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                text.insert(END, f"Regenerated HTML report from {json_file}: {html_filename}\n")
+                webbrowser.open(f"file://{os.path.abspath(html_filename)}")
+                break
+            except PermissionError as e:
+                text.insert(END, f"Error saving {html_filename}: {str(e)}\n")
+                if not show_retry_dialog(root, f"Cannot write {html_filename}: {str(e)}. Retry or stop?"):
+                    text.insert(END, "Stopping HTML report regeneration.\n")
+                    return
+    
+    except Exception as e:
+        text.insert(END, f"Error loading JSON report: {str(e)}\n")
+        messagebox.showerror("Error", f"Failed to load JSON report: {str(e)}")
+
+def create_username_file():
+    """Create username.xlsx with hardcoded usernames in the current directory."""
+    while True:
+        try:
+            text.insert(END, f"Creating username.xlsx...\n")
+            if not os.access(current_dir, os.W_OK):
+                raise PermissionError(f"No write permission for directory: {current_dir}")
+            
+            df = pd.DataFrame({'Username': USERNAMES})
+            df.to_excel(USERNAME_FILE, index=False, engine='openpyxl')
+            text.insert(END, f"Saved username.xlsx to {USERNAME_FILE}\n")
+            text.see(END)
+            break
+        
+        except PermissionError as e:
+            text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
+            if not show_retry_dialog(root, f"Cannot write {USERNAME_FILE}: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping username.xlsx creation.\n")
+                return False
+        except Exception as e:
+            text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
+            if not show_retry_dialog(root, f"Failed to create username.xlsx: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping username.xlsx creation.\n")
+                return False
+    return True
+
+def save_token():
+    """Save or update the entered token to token.json and hide the file."""
+    token = entry_api_token.get().strip()
+    if not token or token == '*******':
+        messagebox.showerror("Error", "Please enter a valid API token.")
+        return
+    while True:
+        try:
+            if not os.access(current_dir, os.W_OK):
+                raise PermissionError(f"No write permission for directory: {current_dir}")
+            
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as token_file:
+                json.dump({'token': token}, token_file, indent=2)
+            os.system(f'attrib +h "{TOKEN_FILE}"')
+            entry_api_token.delete(0, END)
+            entry_api_token.insert(0, '*******')
+            text.insert(END, "Token saved/updated successfully.\n")
+            text.see(END)
+            update_token_status()
+            break
+        
+        except PermissionError as e:
+            text.insert(END, f"Error saving token: {str(e)}\n")
+            if not show_retry_dialog(root, f"Cannot write {TOKEN_FILE}: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping token save.\n")
+                return
+        except Exception as e:
+            text.insert(END, f"Error saving token: {str(e)}\n")
+            if not show_retry_dialog(root, f"Failed to save token: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping token save.\n")
+                return
+
+def load_token():
+    """Load the token from token.json if it exists."""
+    if os.path.exists(TOKEN_FILE):
+        try:
+            if not os.access(TOKEN_FILE, os.R_OK):
+                raise PermissionError(f"No read permission for file: {TOKEN_FILE}")
+            
+            with open(TOKEN_FILE, 'r', encoding='utf-8') as token_file:
+                data = json.load(token_file)
+                token = data.get('token', '')
+                if not token:
+                    raise ValueError("Token field is empty in token.json")
+                return token
+        except json.JSONDecodeError as e:
+            text.insert(END, f"Error reading token.json: Invalid JSON format - {str(e)}\n")
+            return ''
+        except PermissionError as e:
+            text.insert(END, f"Error reading token.json: {str(e)}\n")
+            return ''
+        except Exception as e:
+            text.insert(END, f"Error reading token.json: {str(e)}\n")
+            return ''
+    return ''
+
+def update_token_status():
+    """Update the token status label color and text."""
+    token = entry_api_token.get().strip()
+    if token == '*******' or token:
+        token_status_label.config(text="Token present", foreground="green")
+    else:
+        token_status_label.config(text="Token blank", foreground="red")
+
+def process_comments(comment):
+    """Extract username and clean comment based on pattern DD/MMM/YY HH:MM AM/PM; username; comment."""
+    if pd.isna(comment) or not comment:
+        return '', ''
+    
+    pattern = r'^\d{2}/[A-Za-z]{3}/\d{2}\s+\d{1,2}:\d{2}\s+[AP]M;\s*([^;]+);\s*(.*)$'
+    match = re.match(pattern, comment.strip(), re.DOTALL)
+    
+    if match:
+        username = match.group(1).strip()
+        cleaned_comment = match.group(2).strip()
+        return username, cleaned_comment
+    else:
+        return '', comment.strip()
+
+def fetch_data():
+    btn_save_token.config(state='disabled')
+    btn_fetch.config(state='disabled')
+    btn_generate_report.config(state='disabled')
+    loading_dialog = show_loading_dialog(root)
+    root.update()
+    
+    token = entry_api_token.get().strip()
+    version = entry_version.get().strip()
+    
+    if token == '*******':
+        token = load_token()
+        if not token:
+            messagebox.showerror("Error", "No saved token found. Please enter and save a valid token.")
+            btn_save_token.config(state='normal')
+            btn_fetch.config(state='normal')
+            btn_generate_report.config(state='normal')
+            loading_dialog.destroy()
+            return
+    
+    if not token or not version:
+        messagebox.showerror("Error", "Please fill in all fields.")
+        btn_save_token.config(state='normal')
+        btn_fetch.config(state='normal')
+        btn_generate_report.config(state='normal')
+        loading_dialog.destroy()
+        return
+    
+    if not create_username_file():
+        btn_save_token.config(state='normal')
+        btn_fetch.config(state='normal')
+        btn_generate_report.config(state='normal')
+        loading_dialog.destroy()
+        return
+    
+    text.insert(END, "Starting Jira data fetch...\n")
+    
+    r_version = version
+    if version.lower().startswith('v'):
+        r_version = 'R' + version[1:]
+    else:
+        r_version = 'R' + version
+    
+    jql = f'"Build(s)" in ({version}) OR "Build(s)" in ({r_version})'
+    
+    text.insert(END, f"Formed JQL: {jql}\n")
+    
+    try:
+        headers_bearer = {
+            'Authorization': f'Bearer {token}',
+            'Accept': 'text/csv'
+        }
+        
+        url = f'https://jira.crm.com/sr/jira.issueviews:searchrequest-csv-all-fields/temp/SearchRequest.csv?jqlQuery={jql}'
+        
+        while True:
+            try:
+                text.insert(END, "Attempting fetch with Bearer token...\n")
+                response = requests.get(url, headers=headers_bearer)
+                text.insert(END, f"API Response Status (Bearer): {response.status_code}\n")
+                
+                with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
+                    debug_file.write(response.text)
+                text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
+                
+                if response.status_code != 200:
+                    text.insert(END, "Bearer token failed, attempting Basic Auth...\n")
+                    auth_string = f"user@example.com:{token}"  # Replace with your Jira email
+                    auth_bytes = auth_string.encode('ascii')
+                    auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
+                    headers_basic = {
+                        'Authorization': f'Basic {auth_base64}',
+                        'Accept': 'text/csv'
+                    }
+                    
+                    response = requests.get(url, headers=headers_basic)
+                    text.insert(END, f"API Response Status (Basic): {response.status_code}\n")
+                    
+                    with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
+                        debug_file.write(response.text)
+                    text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
+                    
+                    if response.status_code != 200:
+                        text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
+                        raise requests.exceptions.RequestException(f"Non-200 status: {response.status_code}")
+                break
+            
+            except requests.exceptions.RequestException as e:
+                text.insert(END, f"API Request Error: {str(e)}\n")
+                if not show_retry_dialog(root, f"API request failed: {str(e)}. Retry or stop?"):
+                    text.insert(END, "Stopping data fetch.\n")
+                    btn_save_token.config(state='normal')
+                    btn_fetch.config(state='normal')
+                    btn_generate_report.config(state='normal')
+                    loading_dialog.destroy()
+                    if os.path.exists(DEBUG_FILE):
+                        os.remove(DEBUG_FILE)
+                    if os.path.exists(USERNAME_FILE):
+                        os.remove(USERNAME_FILE)
+                    return
+        
+        try:
+            df = pd.read_csv(io.StringIO(response.text))
+            text.insert(END, f"Fetched {len(df)} issues.\n")
+        except pd.errors.ParserError as e:
+            text.insert(END, f"CSV Parse Error: {str(e)}\n")
+            text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
+            if not show_retry_dialog(root, f"Failed to parse CSV: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping data fetch.\n")
+                btn_save_token.config(state='normal')
+                btn_fetch.config(state='normal')
+                btn_generate_report.config(state='normal')
+                loading_dialog.destroy()
+                if os.path.exists(DEBUG_FILE):
+                    os.remove(DEBUG_FILE)
+                if os.path.exists(USERNAME_FILE):
+                    os.remove(USERNAME_FILE)
+                return
+        
+        text.insert(END, f"Total issues fetched: {len(df)}\n")
+        
+        if not df.empty:
+            temp_filename = os.path.join(current_dir, f"temp_{version}_data.xlsx")
+            df.to_excel(temp_filename, index=False, engine='openpyxl')
+            
+            df = pd.read_excel(temp_filename)
+            
+            columns_to_keep = [col for col in df.columns if col in ['Issue key', 'Issue Type', 'Status'] or col.startswith('Component/s') or col.startswith('Comment')]
+            df = df[columns_to_keep]
+            
+            df['Test Approach'] = 'Functional Jira'
+            component_columns = [col for col in df.columns if col.startswith('Component/s')]
+            for col in component_columns:
+                df.loc[df[col].str.contains('Security|AppSecurity', na=False, case=False), 'Test Approach'] = 'Security Jira'
+            
+            df = df.drop(columns=component_columns)
+            
+            if os.path.exists(USERNAME_FILE):
+                usernames_df = pd.read_excel(USERNAME_FILE)
+                usernames = usernames_df['Username'].str.lower().tolist()
+            else:
+                usernames = []
+                text.insert(END, "Warning: username.xlsx not found. Skipping comment filtering.\n")
+            
+            comment_columns = [col for col in df.columns if col.startswith('Comment')]
+            df['Filtered Comments'] = ''
+            df['Changelog Reviewer'] = ''
+            
+            for index, row in df.iterrows():
+                filtered_comments = []
+                changelog_reviewers = []
+                for col in comment_columns:
+                    comment = str(row[col]) if pd.notna(row[col]) else ''
+                    if comment:
+                        comment_lower = comment.lower()
+                        username_match = any(username in comment_lower for username in usernames)
+                        version_match = version.lower() in comment_lower
+                        if username_match and version_match:
+                            username, cleaned_comment = process_comments(comment)
+                            if cleaned_comment:
+                                filtered_comments.append(cleaned_comment)
+                            if username:
+                                changelog_reviewers.append(username)
+                        else:
+                            df.at[index, col] = ''
+                df.at[index, 'Filtered Comments'] = '\n\n'.join(filtered_comments)
+                df.at[index, 'Changelog Reviewer'] = ', '.join(changelog_reviewers) if changelog_reviewers else ''
+            
+            df = df.drop(columns=comment_columns)
+            
+            df['Manual Secure Code Review'] = 'NA'
+            df['Manual Security Testing'] = 'NA'
+            
+            for index, row in df.iterrows():
+                comment = str(row['Filtered Comments']).lower() if pd.notna(row['Filtered Comments']) else ''
+                if 'secure code review: done' in comment:
+                    df.at[index, 'Manual Secure Code Review'] = 'Done'
+                elif 'secure code review: na' in comment:
+                    df.at[index, 'Manual Secure Code Review'] = 'NA'
+                if 'manual testing: done' in comment:
+                    df.at[index, 'Manual Security Testing'] = 'Done'
+                elif 'manual testing: na' in comment:
+                    df.at[index, 'Manual Security Testing'] = 'NA'
+            
+            missing_comments_df = df[df['Filtered Comments'] == ''][['Issue key', 'Status', 'Test Approach']].copy()
+            
+            filename = os.path.join(current_dir, f"{version}_data.xlsx")
+            text.insert(END, f"Exporting processed data to {filename}...\n")
+            while True:
+                try:
+                    df.to_excel(filename, index=False, engine='openpyxl')
+                    
+                    wb = load_workbook(filename)
+                    ws = wb.active
+                    for col in ws.columns:
+                        if col[0].value == 'Filtered Comments':
+                            for cell in col[1:]:
+                                cell.alignment = Alignment(horizontal='justify', vertical='top', wrap_text=True)
+                    wb.save(filename)
+                    
+                    text.insert(END, "Export complete with formatted comments.\n")
+                    text.see(END)
+                    break
+                except PermissionError as e:
+                    text.insert(END, f"Error: {filename} is open or inaccessible: {str(e)}\n")
+                    if not show_retry_dialog(root, f"Cannot write {filename}: {str(e)}. Retry or stop?"):
+                        text.insert(END, "Stopping data export.\n")
+                        btn_save_token.config(state='normal')
+                        btn_fetch.config(state='normal')
+                        btn_generate_report.config(state='normal')
+                        loading_dialog.destroy()
+                        if os.path.exists(DEBUG_FILE):
+                            os.remove(DEBUG_FILE)
+                        if os.path.exists(USERNAME_FILE):
+                            os.remove(USERNAME_FILE)
+                        if os.path.exists(temp_filename):
+                            os.remove(temp_filename)
+                        return
+            
+            if os.path.exists(USERNAME_FILE):
+                try:
+                    os.remove(USERNAME_FILE)
+                    text.insert(END, f"Deleted {USERNAME_FILE}\n")
+                except Exception as e:
+                    text.insert(END, f"Error deleting {USERNAME_FILE}: {str(e)}\n")
+            
+            if os.path.exists(temp_filename):
+                os.remove(temp_filename)
+            
+            if not missing_comments_df.empty:
+                show_missing_comments_prompt(root, missing_comments_df, version)
+            else:
+                text.insert(END, f"No Jiras found with missing comments for {version}.\n")
+            
+            btn_generate_report.config(state='normal', command=lambda: generate_html_report(version, df))
+        
+        else:
+            text.insert(END, "No data to export.\n")
+    
+    except Exception as e:
+        text.insert(END, f"Error: {str(e)}\n")
+        if not show_retry_dialog(root, f"Unexpected error: {str(e)}. Retry or stop?"):
+            text.insert(END, "Stopping data fetch.\n")
+            btn_save_token.config(state='normal')
+            btn_fetch.config(state='normal')
+            btn_generate_report.config(state='normal')
+            loading_dialog.destroy()
+            if os.path.exists(DEBUG_FILE):
+                os.remove(DEBUG_FILE)
+            if os.path.exists(USERNAME_FILE):
+                os.remove(USERNAME_FILE)
+            return
+    
+    finally:
+        btn_save_token.config(state='normal')
+        btn_fetch.config(state='normal')
+        loading_dialog.destroy()
+        if os.path.exists(DEBUG_FILE):
+            os.remove(DEBUG_FILE)
+
+# Create GUI
+root = Tk()
+root.title("Jira Report Generator")
+root.geometry("600x400")
+
+style = ttk.Style()
+style.theme_use('clam')
+style.configure('TButton', padding=6)
+style.configure('TEntry', padding=5)
+style.configure('TLabel', padding=3)
+
+frame = ttk.Frame(root, padding="10")
+frame.pack(fill='both', expand=True)
+
+ttk.Label(frame, text="Jira API Token:").grid(row=0, column=0, sticky='w', pady=5)
+entry_api_token = ttk.Entry(frame, width=50, show='*')
+entry_api_token.grid(row=0, column=1, pady=5)
+
+token_status_label = ttk.Label(frame, text="Token blank", foreground="red")
+token_status_label.grid(row=1, column=1, sticky='w', pady=5)
+
+try:
+    saved_token = load_token()
+    if saved_token:
+        entry_api_token.insert(0, '*******')
+        update_token_status()
+except Exception as e:
+    text = Text(frame, wrap='word', height=10, borderwidth=2, relief='flat')
+    text.insert(END, f"Error loading token: {str(e)}\n")
+    text.grid(row=7, column=0, columnspan=2, sticky='nsew')
+
+btn_save_token = ttk.Button(frame, text="Save/Update Token", command=save_token)
+btn_save_token.grid(row=2, column=0, columnspan=2, pady=5)
+
+ttk.Label(frame, text="Version (e.g., v12.6.3.9999900):").grid(row=3, column=0, sticky='w', pady=5)
+entry_version = ttk.Entry(frame, width=50)
+entry_version.grid(row=3, column=1, pady=5)
+
+btn_fetch = ttk.Button(frame, text="Fetch and Export Data", command=fetch_data)
+btn_fetch.grid(row=4, column=0, columnspan=2, pady=10)
+
+btn_generate_report = ttk.Button(frame, text="Generate Report", state='disabled')
+btn_generate_report.grid(row=5, column=0, columnspan=2, pady=5)
+
+btn_load_report = ttk.Button(frame, text="Load Report", command=load_json_report)
+btn_load_report.grid(row=6, column=0, columnspan=2, pady=5)
+
+ttk.Label(frame, text="Console:").grid(row=7, column=0, sticky='w', pady=5)
+text_frame = ttk.Frame(frame)
+text_frame.grid(row=8, column=0, columnspan=2, sticky='nsew')
+
+text = Text(text_frame, wrap='word', height=10, borderwidth=2, relief='flat')
+text.pack(side='left', fill='both', expand=True)
+
+scrollbar = Scrollbar(text_frame, command=text.yview)
+scrollbar.pack(side='right', fill='y')
+text.config(yscrollcommand=scrollbar.set)
+
+frame.rowconfigure(8, weight=1)
+frame.columnconfigure(1, weight=1)
+
+root.resizable(False, False)
+root.configure(bg='#f0f0f0')
+
+root.mainloop()
