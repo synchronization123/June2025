@@ -17,23 +17,23 @@ class ProductManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Product Manager")
-        self.root.geometry("700x900")  # Adjusted for more fields
-        self.root.minsize(600, 700)
+        self.root.geometry("800x600")  # Compact window size with scrollbar
+        self.root.minsize(700, 500)
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.token_file = os.path.join(self.script_dir, "token.json")
         self.token = self.load_token()
 
-        # Main container frame
-        self.main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        self.main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        # Main scrollable frame
+        self.scrollable_frame = ctk.CTkScrollableFrame(self.root, fg_color="transparent")
+        self.scrollable_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
         # Tabview
-        self.tabview = ctk.CTkTabview(self.main_frame)
+        self.tabview = ctk.CTkTabview(self.scrollable_frame)
         self.tabview.grid(row=0, column=0, sticky="nsew")
-        self.main_frame.grid_rowconfigure(0, weight=1)
-        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.scrollable_frame.grid_rowconfigure(0, weight=1)
+        self.scrollable_frame.grid_columnconfigure(0, weight=1)
 
         # Product tab
         self.product_tab = self.tabview.add("Product")
@@ -52,146 +52,145 @@ class ProductManagerApp:
         ctk.CTkButton(self.token_frame, text="Save Token", command=self.save_token, width=100).grid(row=0, column=2, padx=5, pady=5)
         self.update_token_status()
 
-        # Product Input Frame
+        # Product Input Frame (4 elements per row: 2 labels, 2 inputs)
         self.input_frame = ctk.CTkFrame(self.product_tab)
         self.input_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
-        self.input_frame.grid_columnconfigure(1, weight=1)
+        self.input_frame.grid_columnconfigure((1, 3), weight=1)
 
-        # Input Fields
+        # Row 0: Product ID, Tags
         self.id_label = ctk.CTkLabel(self.input_frame, text="Product ID (Optional):", font=("Arial", 12))
         self.id_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.id_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.id_entry = ctk.CTkEntry(self.input_frame, width=150)
         self.id_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        self.tags_label = ctk.CTkLabel(self.input_frame, text="Tags (comma-separated):", font=("Arial", 12))
+        self.tags_label.grid(row=0, column=2, padx=5, pady=5, sticky="w")
+        self.tags_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.tags_entry.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 1: Name, Description
         self.name_label = ctk.CTkLabel(self.input_frame, text="Product Name:", font=("Arial", 12))
         self.name_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.name_entry = ctk.CTkTextbox(self.input_frame, height=50, width=200, font=("Arial", 12))
+        self.name_entry = ctk.CTkTextbox(self.input_frame, height=50, width=150, font=("Arial", 12))
         self.name_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-
         self.desc_label = ctk.CTkLabel(self.input_frame, text="Description:", font=("Arial", 12))
-        self.desc_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.desc_entry = ctk.CTkTextbox(self.input_frame, height=80, width=200, font=("Arial", 12))
-        self.desc_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        self.desc_label.grid(row=1, column=2, padx=5, pady=5, sticky="w")
+        self.desc_entry = ctk.CTkTextbox(self.input_frame, height=50, width=150, font=("Arial", 12))
+        self.desc_entry.grid(row=1, column=3, padx=5, pady=5, sticky="ew")
 
-        self.tags_label = ctk.CTkLabel(self.input_frame, text="Tags (comma-separated):", font=("Arial", 12))
-        self.tags_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
-        self.tags_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.tags_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
-
+        # Row 2: Product Numeric Grade, Business Criticality
         self.prod_numeric_grade_label = ctk.CTkLabel(self.input_frame, text="Product Numeric Grade:", font=("Arial", 12))
-        self.prod_numeric_grade_label.grid(row=4, column=0, padx=5, pady=5, sticky="w")
-        self.prod_numeric_grade_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.prod_numeric_grade_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
-
+        self.prod_numeric_grade_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.prod_numeric_grade_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.prod_numeric_grade_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
         self.business_criticality_label = ctk.CTkLabel(self.input_frame, text="Business Criticality:", font=("Arial", 12))
-        self.business_criticality_label.grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        self.business_criticality_label.grid(row=2, column=2, padx=5, pady=5, sticky="w")
         self.business_criticality_var = tk.StringVar(value="medium")
         self.business_criticality_menu = ctk.CTkOptionMenu(self.input_frame, variable=self.business_criticality_var,
                                                            values=["very high", "high", "medium", "low", "very low"],
-                                                           width=200)
-        self.business_criticality_menu.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
+                                                           width=150)
+        self.business_criticality_menu.grid(row=2, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 3: Platform, Lifecycle
         self.platform_label = ctk.CTkLabel(self.input_frame, text="Platform:", font=("Arial", 12))
-        self.platform_label.grid(row=6, column=0, padx=5, pady=5, sticky="w")
+        self.platform_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
         self.platform_var = tk.StringVar(value="web service")
         self.platform_menu = ctk.CTkOptionMenu(self.input_frame, variable=self.platform_var,
                                               values=["web service", "mobile", "desktop", "cloud", "other"],
-                                              width=200)
-        self.platform_menu.grid(row=6, column=1, padx=5, pady=5, sticky="ew")
-
+                                              width=150)
+        self.platform_menu.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
         self.lifecycle_label = ctk.CTkLabel(self.input_frame, text="Lifecycle:", font=("Arial", 12))
-        self.lifecycle_label.grid(row=7, column=0, padx=5, pady=5, sticky="w")
+        self.lifecycle_label.grid(row=3, column=2, padx=5, pady=5, sticky="w")
         self.lifecycle_var = tk.StringVar(value="construction")
         self.lifecycle_menu = ctk.CTkOptionMenu(self.input_frame, variable=self.lifecycle_var,
                                                values=["construction", "production", "retirement", "other"],
-                                               width=200)
-        self.lifecycle_menu.grid(row=7, column=1, padx=5, pady=5, sticky="ew")
+                                               width=150)
+        self.lifecycle_menu.grid(row=3, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 4: Origin, User Records
         self.origin_label = ctk.CTkLabel(self.input_frame, text="Origin:", font=("Arial", 12))
-        self.origin_label.grid(row=8, column=0, padx=5, pady=5, sticky="w")
-        self.origin_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.origin_entry.grid(row=8, column=1, padx=5, pady=5, sticky="ew")
-
+        self.origin_label.grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        self.origin_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.origin_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
         self.user_records_label = ctk.CTkLabel(self.input_frame, text="User Records:", font=("Arial", 12))
-        self.user_records_label.grid(row=9, column=0, padx=5, pady=5, sticky="w")
-        self.user_records_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.user_records_entry.grid(row=9, column=1, padx=5, pady=5, sticky="ew")
+        self.user_records_label.grid(row=4, column=2, padx=5, pady=5, sticky="w")
+        self.user_records_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.user_records_entry.grid(row=4, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 5: Revenue, Product Type
         self.revenue_label = ctk.CTkLabel(self.input_frame, text="Revenue:", font=("Arial", 12))
-        self.revenue_label.grid(row=10, column=0, padx=5, pady=5, sticky="w")
-        self.revenue_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.revenue_entry.grid(row=10, column=1, padx=5, pady=5, sticky="ew")
-
+        self.revenue_label.grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        self.revenue_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.revenue_entry.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
         self.prod_type_label = ctk.CTkLabel(self.input_frame, text="Product Type (Number):", font=("Arial", 12))
-        self.prod_type_label.grid(row=11, column=0, padx=5, pady=5, sticky="w")
-        self.prod_type_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.prod_type_entry.grid(row=11, column=1, padx=5, pady=5, sticky="ew")
+        self.prod_type_label.grid(row=5, column=2, padx=5, pady=5, sticky="w")
+        self.prod_type_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.prod_type_entry.grid(row=5, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 6: SLA Configuration, Product Manager
         self.sla_label = ctk.CTkLabel(self.input_frame, text="SLA Configuration (Number):", font=("Arial", 12))
-        self.sla_label.grid(row=12, column=0, padx=5, pady=5, sticky="w")
-        self.sla_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.sla_entry.grid(row=12, column=1, padx=5, pady=5, sticky="ew")
-
+        self.sla_label.grid(row=6, column=0, padx=5, pady=5, sticky="w")
+        self.sla_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.sla_entry.grid(row=6, column=1, padx=5, pady=5, sticky="ew")
         self.product_manager_label = ctk.CTkLabel(self.input_frame, text="Product Manager ID:", font=("Arial", 12))
-        self.product_manager_label.grid(row=13, column=0, padx=5, pady=5, sticky="w")
-        self.product_manager_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.product_manager_entry.grid(row=13, column=1, padx=5, pady=5, sticky="ew")
+        self.product_manager_label.grid(row=6, column=2, padx=5, pady=5, sticky="w")
+        self.product_manager_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.product_manager_entry.grid(row=6, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 7: Technical Contact, Team Manager
         self.technical_contact_label = ctk.CTkLabel(self.input_frame, text="Technical Contact ID:", font=("Arial", 12))
-        self.technical_contact_label.grid(row=14, column=0, padx=5, pady=5, sticky="w")
-        self.technical_contact_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.technical_contact_entry.grid(row=14, column=1, padx=5, pady=5, sticky="ew")
-
+        self.technical_contact_label.grid(row=7, column=0, padx=5, pady=5, sticky="w")
+        self.technical_contact_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.technical_contact_entry.grid(row=7, column=1, padx=5, pady=5, sticky="ew")
         self.team_manager_label = ctk.CTkLabel(self.input_frame, text="Team Manager ID:", font=("Arial", 12))
-        self.team_manager_label.grid(row=15, column=0, padx=5, pady=5, sticky="w")
-        self.team_manager_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.team_manager_entry.grid(row=15, column=1, padx=5, pady=5, sticky="ew")
+        self.team_manager_label.grid(row=7, column=2, padx=5, pady=5, sticky="w")
+        self.team_manager_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.team_manager_entry.grid(row=7, column=3, padx=5, pady=5, sticky="ew")
 
+        # Row 8: Regulations
         self.regulations_label = ctk.CTkLabel(self.input_frame, text="Regulations (comma-separated IDs):", font=("Arial", 12))
-        self.regulations_label.grid(row=16, column=0, padx=5, pady=5, sticky="w")
-        self.regulations_entry = ctk.CTkEntry(self.input_frame, width=200)
-        self.regulations_entry.grid(row=16, column=1, padx=5, pady=5, sticky="ew")
+        self.regulations_label.grid(row=8, column=0, padx=5, pady=5, sticky="w")
+        self.regulations_entry = ctk.CTkEntry(self.input_frame, width=150)
+        self.regulations_entry.grid(row=8, column=1, padx=5, pady=5, sticky="ew")
 
-        # Boolean Checkboxes
+        # Boolean Checkboxes (spanning columns for clarity)
+        self.checkbox_frame = ctk.CTkFrame(self.product_tab)
+        self.checkbox_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+        self.checkbox_frame.grid_columnconfigure((0, 1), weight=1)
+
         self.external_audience_var = tk.BooleanVar(value=True)
-        self.external_audience_check = ctk.CTkCheckBox(self.input_frame, text="External Audience", variable=self.external_audience_var)
-        self.external_audience_check.grid(row=17, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-
+        self.external_audience_check = ctk.CTkCheckBox(self.checkbox_frame, text="External Audience", variable=self.external_audience_var)
+        self.external_audience_check.grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.internet_accessible_var = tk.BooleanVar(value=True)
-        self.internet_accessible_check = ctk.CTkCheckBox(self.input_frame, text="Internet Accessible", variable=self.internet_accessible_var)
-        self.internet_accessible_check.grid(row=18, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-
+        self.internet_accessible_check = ctk.CTkCheckBox(self.checkbox_frame, text="Internet Accessible", variable=self.internet_accessible_var)
+        self.internet_accessible_check.grid(row=0, column=1, padx=5, pady=5, sticky="w")
         self.product_tag_inheritance_var = tk.BooleanVar(value=True)
-        self.product_tag_inheritance_check = ctk.CTkCheckBox(self.input_frame, text="Enable Product Tag Inheritance", variable=self.product_tag_inheritance_var)
-        self.product_tag_inheritance_check.grid(row=19, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-
+        self.product_tag_inheritance_check = ctk.CTkCheckBox(self.checkbox_frame, text="Enable Product Tag Inheritance", variable=self.product_tag_inheritance_var)
+        self.product_tag_inheritance_check.grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.simple_risk_acceptance_var = tk.BooleanVar(value=True)
-        self.simple_risk_acceptance_check = ctk.CTkCheckBox(self.input_frame, text="Enable Simple Risk Acceptance", variable=self.simple_risk_acceptance_var)
-        self.simple_risk_acceptance_check.grid(row=20, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-
+        self.simple_risk_acceptance_check = ctk.CTkCheckBox(self.checkbox_frame, text="Enable Simple Risk Acceptance", variable=self.simple_risk_acceptance_var)
+        self.simple_risk_acceptance_check.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         self.full_risk_acceptance_var = tk.BooleanVar(value=True)
-        self.full_risk_acceptance_check = ctk.CTkCheckBox(self.input_frame, text="Enable Full Risk Acceptance", variable=self.full_risk_acceptance_var)
-        self.full_risk_acceptance_check.grid(row=21, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-
+        self.full_risk_acceptance_check = ctk.CTkCheckBox(self.checkbox_frame, text="Enable Full Risk Acceptance", variable=self.full_risk_acceptance_var)
+        self.full_risk_acceptance_check.grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.sla_breach_notifications_var = tk.BooleanVar(value=True)
-        self.sla_breach_notifications_check = ctk.CTkCheckBox(self.input_frame, text="Disable SLA Breach Notifications", variable=self.sla_breach_notifications_var)
-        self.sla_breach_notifications_check.grid(row=22, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        self.sla_breach_notifications_check = ctk.CTkCheckBox(self.checkbox_frame, text="Disable SLA Breach Notifications", variable=self.sla_breach_notifications_var)
+        self.sla_breach_notifications_check.grid(row=2, column=1, padx=5, pady=5, sticky="w")
 
         # Button Frame
         self.button_frame = ctk.CTkFrame(self.product_tab)
-        self.button_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+        self.button_frame.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
         ctk.CTkButton(self.button_frame, text="Submit Product", command=self.submit_product, width=120).grid(row=0, column=0, padx=5, pady=5)
         ctk.CTkButton(self.button_frame, text="Import Excel", command=self.import_excel, width=120).grid(row=0, column=1, padx=5, pady=5)
         ctk.CTkButton(self.button_frame, text="Download Template", command=self.download_template, width=120).grid(row=0, column=2, padx=5, pady=5)
 
         # Progress Label
         self.progress_label = ctk.CTkLabel(self.product_tab, text="", font=("Arial", 12))
-        self.progress_label.grid(row=3, column=0, padx=10, pady=5)
+        self.progress_label.grid(row=4, column=0, padx=10, pady=5)
 
         # GUI Console
         self.console_frame = ctk.CTkFrame(self.product_tab)
-        self.console_frame.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
-        self.product_tab.grid_rowconfigure(4, weight=1)
+        self.console_frame.grid(row=5, column=0, padx=10, pady=10, sticky="nsew")
+        self.product_tab.grid_rowconfigure(5, weight=1)
         ctk.CTkLabel(self.console_frame, text="Console Output:", font=("Arial", 12)).grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.console = ctk.CTkTextbox(self.console_frame, height=100, state="disabled", font=("Arial", 10))
         self.console.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
@@ -242,7 +241,7 @@ class ProductManagerApp:
         if value == "":
             return True
         try:
-            float(value)  # Allow integers and floats
+            float(value)
             return True
         except ValueError:
             return False
