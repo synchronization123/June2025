@@ -2,7 +2,6 @@
 import pandas as pd
 import requests
 import os
-import argparse
 from datetime import datetime
 
 # Hardcoded API token
@@ -36,9 +35,12 @@ def post_to_api(data):
             log("Server returned 500 Internal Server Error. Check payload or server status.")
         return False
 
-def import_excel(file_path):
-    """Import product data from an Excel file."""
+def import_excel():
+    """Import product data from data.xlsx in the script's directory."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "data.xlsx")
     log(f"Importing Excel file: {file_path}")
+    
     try:
         df = pd.read_excel(file_path)
         required_columns = ["name", "description"]
@@ -68,43 +70,12 @@ def import_excel(file_path):
         log(f"Import Error: {e}")
         return False
 
-def download_template():
-    """Download Excel template with headers in the script's directory."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, "product_template.xlsx")
-    log(f"Generating Excel template: {file_path}")
-    try:
-        columns = ["name", "description"]
-        df = pd.DataFrame(columns=columns)
-        df.to_excel(file_path, index=False)
-        log(f"Template saved to {file_path}")
-        return True
-    except Exception as e:
-        log(f"Template Error: {e}")
-        return False
-
 def main():
-    parser = argparse.ArgumentParser(description="DefectDojo Product Manager CLI")
-    parser.add_argument("--import-excel", help="Path to Excel file for importing products")
-    parser.add_argument("--download-template", action="store_true", help="Generate Excel template")
-    
-    args = parser.parse_args()
-
-    if args.download_template:
-        if download_template():
-            log("Excel template generated successfully")
-        else:
-            log("Excel template generation failed")
-        return
-
-    if args.import_excel:
-        if import_excel(args.import_excel):
-            log("Excel import completed successfully")
-        else:
-            log("Excel import failed")
-        return
-
-    parser.print_help()
+    """Main function to import from data.xlsx."""
+    if import_excel():
+        log("Excel import completed successfully")
+    else:
+        log("Excel import failed")
 
 if __name__ == "__main__":
     main()
