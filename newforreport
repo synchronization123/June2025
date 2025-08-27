@@ -127,7 +127,7 @@ def show_missing_comments_prompt(parent, missing_comments_df, version):
     prompt.resizable(False, False)
 
 def generate_html_report(version, df):
-    """Generate HTML report directly with default values and interactive elements."""
+    """Generate HTML report with default values and interactive elements, saving to JSON."""
     # Default report data
     report_data = {
         'version': version,
@@ -136,7 +136,7 @@ def generate_html_report(version, df):
         'vapt_analysis': {cat: {'status': 'NA', 'comment': ''} for cat in VAPT_CATEGORIES}
     }
     
-    # Save to JSON
+    # Save initial JSON
     json_filename = os.path.join(current_dir, f"{version}.json")
     while True:
         try:
@@ -178,7 +178,7 @@ def generate_html_report(version, df):
     vapt_save_script_str = '\n'.join(vapt_save_script)
     vapt_object_entries_str = ', '.join(vapt_object_entries)
     
-    # Generate HTML content with JavaScript for interactivity
+    # Generate HTML content with JavaScript for interactivity and JSON saving/loading
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -243,6 +243,19 @@ def generate_html_report(version, df):
             background-color: #fff;
             font-size: 14px;
         }}
+        button {{
+            padding: 10px 20px;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 10px 0;
+        }}
+        button:hover {{
+            background-color: #34495e;
+        }}
         .center {{
             text-align: center;
         }}
@@ -259,44 +272,132 @@ def generate_html_report(version, df):
         }}
     </style>
     <script>
-        // Load saved data from localStorage on page load
         document.addEventListener('DOMContentLoaded', () => {{
             const version = '{version}';
             const storageKey = `report_${{version}}`;
-            const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
+            const jsonFile = '{version}.json';
             
-            // Load Contrast Verification
-            const contrastSelect = document.getElementById('contrast-verification');
-            contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
-            
-            // Load Description
-            const descriptionTextarea = document.getElementById('description');
-            descriptionTextarea.value = savedData.description || '{report_data['description']}';
-            
-            // Load VAPT Analysis
-            {vapt_load_script_str}
-            
-            // Save data to localStorage on change
-            contrastSelect.addEventListener('change', saveData);
-            descriptionTextarea.addEventListener('input', saveData);
-            {vapt_save_script_str}
-            
-            function saveData() {{
-                const data = {{
-                    contrast_verification: contrastSelect.value,
-                    description: descriptionTextarea.value,
-                    vapt_analysis: {{
-                        {vapt_object_entries_str}
+            // Load from JSON
+            fetch(jsonFile)
+                .then(response => {{
+                    if (!response.ok) {{
+                        console.warn('JSON file not found, using defaults');
+                        return null;
                     }}
-                }};
-                localStorage.setItem(storageKey, JSON.stringify(data));
-            }}
+                    return response.json();
+                }})
+                .then(jsonData => {{
+                    // Fallback to localStorage or defaults
+                    const savedData = jsonData || JSON.parse(localStorage.getItem(storageKey)) || {{}};
+                    
+                    // Load Contrast Verification
+                    const contrastSelect = document.getElementById('contrast-verification');
+                    contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
+                    
+                    // Load Description
+                    const descriptionTextarea = document.getElementById('description');
+                    descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    
+                    // Load VAPT Analysis
+                    {vapt_load_script_str}
+                    
+                    // Save data to localStorage on change (real-time backup)
+                    contrastSelect.addEventListener('change', saveData);
+                    descriptionTextarea.addEventListener('input', saveData);
+                    {vapt_save_script_str}
+                    
+                    function saveData() {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        // Save to localStorage
+                        localStorage.setItem(storageKey, JSON.stringify(data));
+                    }}
+                    
+                    // Save to JSON file
+                    document.getElementById('save-json').addEventListener('click', () => {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {{ type: 'application/json' }});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = jsonFile;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        alert('JSON file downloaded. Save it as {version}.json in the same directory as this HTML.');
+                    }});
+                }})
+                .catch(error => {{
+                    console.error('Error loading JSON:', error);
+                    // Fallback to localStorage or defaults
+                    const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
+                    
+                    const contrastSelect = document.getElementById('contrast-verification');
+                    contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
+                    
+                    const descriptionTextarea = document.getElementById('description');
+                    descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    
+                    {vapt_load_script_str}
+                    
+                    contrastSelect.addEventListener('change', saveData);
+                    descriptionTextarea.addEventListener('input', saveData);
+                    {vapt_save_script_str}
+                    
+                    function saveData() {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        localStorage.setItem(storageKey, JSON.stringify(data));
+                    }}
+                    
+                    document.getElementById('save-json').addEventListener('click', () => {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {{ type: 'application/json' }});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = jsonFile;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        alert('JSON file downloaded. Save it as {version}.json in the same directory as this HTML.');
+                    }});
+                }});
         }});
     </script>
 </head>
 <body>
     <div class="container">
         <h1>{version} Build Report</h1>
+        <button id="save-json">Save Data to JSON</button>
         
         <div class="section">
             <h2>Summary</h2>
@@ -517,6 +618,19 @@ def load_json_report():
             background-color: #fff;
             font-size: 14px;
         }}
+        button {{
+            padding: 10px 20px;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 10px 0;
+        }}
+        button:hover {{
+            background-color: #34495e;
+        }}
         .center {{
             text-align: center;
         }}
@@ -533,44 +647,131 @@ def load_json_report():
         }}
     </style>
     <script>
-        // Load saved data from localStorage on page load
         document.addEventListener('DOMContentLoaded', () => {{
             const version = '{version}';
             const storageKey = `report_${{version}}`;
-            const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
+            const jsonFile = '{version}.json';
             
-            // Load Contrast Verification
-            const contrastSelect = document.getElementById('contrast-verification');
-            contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
-            
-            // Load Description
-            const descriptionTextarea = document.getElementById('description');
-            descriptionTextarea.value = savedData.description || '{report_data['description']}';
-            
-            // Load VAPT Analysis
-            {vapt_load_script_str}
-            
-            // Save data to localStorage on change
-            contrastSelect.addEventListener('change', saveData);
-            descriptionTextarea.addEventListener('input', saveData);
-            {vapt_save_script_str}
-            
-            function saveData() {{
-                const data = {{
-                    contrast_verification: contrastSelect.value,
-                    description: descriptionTextarea.value,
-                    vapt_analysis: {{
-                        {vapt_object_entries_str}
+            // Load from JSON
+            fetch(jsonFile)
+                .then(response => {{
+                    if (!response.ok) {{
+                        console.warn('JSON file not found, using defaults');
+                        return null;
                     }}
-                }};
-                localStorage.setItem(storageKey, JSON.stringify(data));
-            }}
+                    return response.json();
+                }})
+                .then(jsonData => {{
+                    // Fallback to localStorage or defaults
+                    const savedData = jsonData || JSON.parse(localStorage.getItem(storageKey)) || {{}};
+                    
+                    // Load Contrast Verification
+                    const contrastSelect = document.getElementById('contrast-verification');
+                    contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
+                    
+                    // Load Description
+                    const descriptionTextarea = document.getElementById('description');
+                    descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    
+                    // Load VAPT Analysis
+                    {vapt_load_script_str}
+                    
+                    // Save data to localStorage on change (real-time backup)
+                    contrastSelect.addEventListener('change', saveData);
+                    descriptionTextarea.addEventListener('input', saveData);
+                    {vapt_save_script_str}
+                    
+                    function saveData() {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        localStorage.setItem(storageKey, JSON.stringify(data));
+                    }}
+                    
+                    // Save to JSON file
+                    document.getElementById('save-json').addEventListener('click', () => {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {{ type: 'application/json' }});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = jsonFile;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        alert('JSON file downloaded. Save it as {version}.json in the same directory as this HTML.');
+                    }});
+                }})
+                .catch(error => {{
+                    console.error('Error loading JSON:', error);
+                    // Fallback to localStorage or defaults
+                    const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
+                    
+                    const contrastSelect = document.getElementById('contrast-verification');
+                    contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
+                    
+                    const descriptionTextarea = document.getElementById('description');
+                    descriptionTextarea.value = savedData.description || '{report_data['description']}';
+                    
+                    {vapt_load_script_str}
+                    
+                    contrastSelect.addEventListener('change', saveData);
+                    descriptionTextarea.addEventListener('input', saveData);
+                    {vapt_save_script_str}
+                    
+                    function saveData() {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        localStorage.setItem(storageKey, JSON.stringify(data));
+                    }}
+                    
+                    document.getElementById('save-json').addEventListener('click', () => {{
+                        const data = {{
+                            version: version,
+                            contrast_verification: contrastSelect.value,
+                            description: descriptionTextarea.value,
+                            vapt_analysis: {{
+                                {vapt_object_entries_str}
+                            }}
+                        }};
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {{ type: 'application/json' }});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = jsonFile;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        alert('JSON file downloaded. Save it as {version}.json in the same directory as this HTML.');
+                    }});
+                }});
         }});
     </script>
 </head>
 <body>
     <div class="container">
         <h1>{version} Build Report</h1>
+        <button id="save-json">Save Data to JSON</button>
         
         <div class="section">
             <h2>Summary</h2>
