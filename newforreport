@@ -127,93 +127,36 @@ def show_missing_comments_prompt(parent, missing_comments_df, version):
     prompt.resizable(False, False)
 
 def generate_html_report(version, df):
-    """Show a form for user input and generate HTML report."""
-    report_window = Toplevel(root)
-    report_window.title(f"Generate {version} Build Report")
-    report_window.geometry("800x600")
+    """Generate HTML report directly with default values."""
+    # Default report data
+    report_data = {
+        'version': version,
+        'contrast_verification': 'No',
+        'description': '',
+        'vapt_analysis': {cat: {'status': 'NA', 'comment': ''} for cat in VAPT_CATEGORIES}
+    }
     
-    # Main frame with scrollable canvas
-    main_frame = ttk.Frame(report_window, padding="10")
-    main_frame.pack(fill='both', expand=True)
-    
-    canvas = ttk.Scrollbar(main_frame, orient='vertical')
-    canvas.pack(side='right', fill='y')
-    
-    frame = ttk.Frame(main_frame)
-    frame.pack(fill='both', expand=True)
-    
-    # Variables for form inputs
-    contrast_verification = ttk.Combobox(frame, values=['Yes', 'No'], state='readonly', width=15)
-    contrast_verification.set('No')
-    description = Text(frame, height=5, width=50)
-    vapt_statuses = {cat: ttk.Combobox(frame, values=['NA', 'Not Found', 'Found'], state='readonly', width=15) for cat in VAPT_CATEGORIES}
-    vapt_comments = {cat: Text(frame, height=3, width=30) for cat in VAPT_CATEGORIES}
-    
-    # Summary Section
-    ttk.Label(frame, text="Summary", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky='w', pady=10, padx=5)
-    ttk.Label(frame, text="Contrast Verification:").grid(row=1, column=0, sticky='w', padx=5)
-    contrast_verification.grid(row=2, column=0, sticky='w', padx=5, pady=5)
-    ttk.Label(frame, text="Description:").grid(row=3, column=0, sticky='w', padx=5)
-    description.grid(row=4, column=0, sticky='ew', padx=5, pady=5)
-    
-    # Security Analysis Section
-    ttk.Label(frame, text="Security Analysis", font=("Helvetica", 12, "bold")).grid(row=5, column=0, sticky='w', pady=10, padx=5)
-    
-    # VAPT Table
-    table_frame = ttk.Frame(frame)
-    table_frame.grid(row=6, column=0, sticky='ew', padx=5, pady=5)
-    
-    ttk.Label(table_frame, text="Sr. No.", font=("Helvetica", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky='w')
-    ttk.Label(table_frame, text="Category", font=("Helvetica", 10, "bold")).grid(row=0, column=1, padx=5, pady=5, sticky='w')
-    ttk.Label(table_frame, text="Status", font=("Helvetica", 10, "bold")).grid(row=0, column=2, padx=5, pady=5, sticky='w')
-    ttk.Label(table_frame, text="Comment", font=("Helvetica", 10, "bold")).grid(row=0, column=3, padx=5, pady=5, sticky='w')
-    
-    for i, category in enumerate(VAPT_CATEGORIES, 1):
-        ttk.Label(table_frame, text=str(i)).grid(row=i, column=0, padx=5, pady=2, sticky='w')
-        ttk.Label(table_frame, text=category).grid(row=i, column=1, padx=5, pady=2, sticky='w')
-        vapt_statuses[category].grid(row=i, column=2, padx=5, pady=2)
-        vapt_statuses[category].set('NA')
-        vapt_comments[category].grid(row=i, column=3, padx=5, pady=2, sticky='ew')
-    
-    table_frame.columnconfigure(3, weight=1)  # Make Comment column expandable
-    
-    # Save and Generate Report Button
-    ttk.Button(frame, text="Save and Generate Report", command=lambda: save_and_generate()).grid(row=7, column=0, pady=15)
-    
-    # Configure frame column to expand
-    frame.columnconfigure(0, weight=1)
-    
-    # Save and Generate Report Logic
-    def save_and_generate():
-        report_data = {
-            'version': version,
-            'contrast_verification': contrast_verification.get(),
-            'description': description.get("1.0", END).strip(),
-            'vapt_analysis': {cat: {'status': vapt_statuses[cat].get(), 'comment': vapt_comments[cat].get("1.0", END).strip()} for cat in VAPT_CATEGORIES}
-        }
+    # Save to JSON
+    json_filename = os.path.join(current_dir, f"{version}.json")
+    while True:
+        try:
+            with open(json_filename, 'w', encoding='utf-8') as f:
+                json.dump(report_data, f, indent=2)
+            text.insert(END, f"Saved report data to {json_filename}\n")
+            break
+        except PermissionError as e:
+            text.insert(END, f"Error saving {json_filename}: {str(e)}\n")
+            if not show_retry_dialog(root, f"Cannot write {json_filename}: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping report save.\n")
+                return
         
-        # Save to JSON
-        json_filename = os.path.join(current_dir, f"{version}.json")
-        while True:
-            try:
-                with open(json_filename, 'w', encoding='utf-8') as f:
-                    json.dump(report_data, f, indent=2)
-                text.insert(END, f"Saved report data to {json_filename}\n")
-                break
-            except PermissionError as e:
-                text.insert(END, f"Error saving {json_filename}: {str(e)}\n")
-                if not show_retry_dialog(root, f"Cannot write {json_filename}: {str(e)}. Retry or stop?"):
-                    text.insert(END, "Stopping report save.\n")
-                    report_window.destroy()
-                    return
-        
-        # Preprocess comments to remove blank lines
-        df['Formatted Comments'] = df['Filtered Comments'].apply(
-            lambda x: '<br>'.join(line for line in x.split('\n') if line.strip()) if pd.notna(x) else ''
-        )
-        
-        # Generate HTML content
-        html_content = f"""<!DOCTYPE html>
+    # Preprocess comments to remove blank lines
+    df['Formatted Comments'] = df['Filtered Comments'].apply(
+        lambda x: '<br>'.join(line for line in x.split('\n') if line.strip()) if pd.notna(x) else ''
+    )
+    
+    # Generate HTML content
+    html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -322,8 +265,8 @@ def generate_html_report(version, df):
                     <th>Comment</th>
                 </tr>
 """
-        for i, cat in enumerate(VAPT_CATEGORIES, 1):
-            html_content += f"""
+    for i, cat in enumerate(VAPT_CATEGORIES, 1):
+        html_content += f"""
                 <tr>
                     <td>{i}</td>
                     <td>{cat}</td>
@@ -331,7 +274,7 @@ def generate_html_report(version, df):
                     <td style="text-align: justify;">{report_data['vapt_analysis'][cat]['comment']}</td>
                 </tr>
 """
-        html_content += """
+    html_content += """
             </table>
         </div>
         
@@ -347,8 +290,8 @@ def generate_html_report(version, df):
                     <th>Remark/Comment</th>
                 </tr>
 """
-        for _, row in df.iterrows():
-            html_content += f"""
+    for _, row in df.iterrows():
+        html_content += f"""
                 <tr>
                     <td>{row['Changelog Reviewer']}</td>
                     <td>{row['Issue key']}</td>
@@ -358,38 +301,28 @@ def generate_html_report(version, df):
                     <td>{row['Formatted Comments']}</td>
                 </tr>
 """
-        html_content += """
+    html_content += """
             </table>
         </div>
     </div>
 </body>
 </html>
 """
-        
-        # Save HTML
-        html_filename = os.path.join(current_dir, f"{version}.html")
-        while True:
-            try:
-                with open(html_filename, 'w', encoding='utf-8') as f:
-                    f.write(html_content)
-                text.insert(END, f"Saved HTML report: {html_filename}\n")
-                text.see(END)
-                break
-            except PermissionError as e:
-                text.insert(END, f"Error saving {html_filename}: {str(e)}\n")
-                if not show_retry_dialog(root, f"Cannot write {html_filename}: {str(e)}. Retry or stop?"):
-                    text.insert(END, "Stopping HTML report generation.\n")
-                    report_window.destroy()
-                    return
-        
-        report_window.destroy()
     
-    # Center the window
-    report_window.update_idletasks()
-    x = root.winfo_x() + (root.winfo_width() - report_window.winfo_width()) // 2
-    y = root.winfo_y() + (root.winfo_height() - report_window.winfo_height()) // 2
-    report_window.geometry(f"+{x}+{y}")
-    report_window.resizable(False, False)
+    # Save HTML
+    html_filename = os.path.join(current_dir, f"{version}.html")
+    while True:
+        try:
+            with open(html_filename, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            text.insert(END, f"Saved HTML report: {html_filename}\n")
+            text.see(END)
+            break
+        except PermissionError as e:
+            text.insert(END, f"Error saving {html_filename}: {str(e)}\n")
+            if not show_retry_dialog(root, f"Cannot write {html_filename}: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping HTML report generation.\n")
+                return
 
 def load_json_report():
     """Load a JSON report and regenerate HTML."""
