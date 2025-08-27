@@ -155,6 +155,29 @@ def generate_html_report(version, df):
         lambda x: '<br>'.join(line for line in x.split('\n') if line.strip()) if pd.notna(x) else ''
     )
     
+    # Generate JavaScript for VAPT categories
+    vapt_load_script = []
+    vapt_save_script = []
+    vapt_object_entries = []
+    for i, cat in enumerate(VAPT_CATEGORIES, 1):
+        vapt_load_script.append(
+            f"const status{i} = document.getElementById('vapt-status-{i}');\n"
+            f"const comment{i} = document.getElementById('vapt-comment-{i}');\n"
+            f"status{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].status : '{report_data['vapt_analysis'][cat]['status']}';\n"
+            f"comment{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].comment : '{report_data['vapt_analysis'][cat]['comment']}';"
+        )
+        vapt_save_script.append(
+            f"status{i}.addEventListener('change', saveData);\n"
+            f"comment{i}.addEventListener('input', saveData);"
+        )
+        vapt_object_entries.append(
+            f"'{cat}': {{ status: document.getElementById('vapt-status-{i}').value, comment: document.getElementById('vapt-comment-{i}').value }}"
+        )
+    
+    vapt_load_script_str = '\n'.join(vapt_load_script)
+    vapt_save_script_str = '\n'.join(vapt_save_script)
+    vapt_object_entries_str = ', '.join(vapt_object_entries)
+    
     # Generate HTML content with JavaScript for interactivity
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -251,27 +274,19 @@ def generate_html_report(version, df):
             descriptionTextarea.value = savedData.description || '{report_data['description']}';
             
             // Load VAPT Analysis
-            {''.join([f"""
-            const status{i} = document.getElementById('vapt-status-{i}');
-            const comment{i} = document.getElementById('vapt-comment-{i}');
-            status{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].status : '{report_data['vapt_analysis'][cat]['status']}';
-            comment{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].comment : '{report_data['vapt_analysis'][cat]['comment']}';
-            """ for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+            {vapt_load_script_str}
             
             // Save data to localStorage on change
             contrastSelect.addEventListener('change', saveData);
             descriptionTextarea.addEventListener('input', saveData);
-            {''.join([f"""
-            status{i}.addEventListener('change', saveData);
-            comment{i}.addEventListener('input', saveData);
-            """ for i in range(1, len(VAPT_CATEGORIES) + 1)])};
+            {vapt_save_script_str}
             
             function saveData() {{
                 const data = {{
                     contrast_verification: contrastSelect.value,
                     description: descriptionTextarea.value,
                     vapt_analysis: {{
-                        {', '.join([f"'{cat}': {{ status: document.getElementById('vapt-status-{i}').value, comment: document.getElementById('vapt-comment-{i}').value }}" for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+                        {vapt_object_entries_str}
                     }}
                 }};
                 localStorage.setItem(storageKey, JSON.stringify(data));
@@ -415,6 +430,29 @@ def load_json_report():
             lambda x: '<br>'.join(line for line in x.split('\n') if line.strip()) if pd.notna(x) else ''
         )
         
+        # Generate JavaScript for VAPT categories
+        vapt_load_script = []
+        vapt_save_script = []
+        vapt_object_entries = []
+        for i, cat in enumerate(VAPT_CATEGORIES, 1):
+            vapt_load_script.append(
+                f"const status{i} = document.getElementById('vapt-status-{i}');\n"
+                f"const comment{i} = document.getElementById('vapt-comment-{i}');\n"
+                f"status{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].status : '{report_data['vapt_analysis'][cat]['status']}';\n"
+                f"comment{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].comment : '{report_data['vapt_analysis'][cat]['comment']}';"
+            )
+            vapt_save_script.append(
+                f"status{i}.addEventListener('change', saveData);\n"
+                f"comment{i}.addEventListener('input', saveData);"
+            )
+            vapt_object_entries.append(
+                f"'{cat}': {{ status: document.getElementById('vapt-status-{i}').value, comment: document.getElementById('vapt-comment-{i}').value }}"
+            )
+        
+        vapt_load_script_str = '\n'.join(vapt_load_script)
+        vapt_save_script_str = '\n'.join(vapt_save_script)
+        vapt_object_entries_str = ', '.join(vapt_object_entries)
+        
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -510,27 +548,19 @@ def load_json_report():
             descriptionTextarea.value = savedData.description || '{report_data['description']}';
             
             // Load VAPT Analysis
-            {''.join([f"""
-            const status{i} = document.getElementById('vapt-status-{i}');
-            const comment{i} = document.getElementById('vapt-comment-{i}');
-            status{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].status : '{report_data['vapt_analysis'][cat]['status']}';
-            comment{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].comment : '{report_data['vapt_analysis'][cat]['comment']}';
-            """ for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+            {vapt_load_script_str}
             
             // Save data to localStorage on change
             contrastSelect.addEventListener('change', saveData);
             descriptionTextarea.addEventListener('input', saveData);
-            {''.join([f"""
-            status{i}.addEventListener('change', saveData);
-            comment{i}.addEventListener('input', saveData);
-            """ for i in range(1, len(VAPT_CATEGORIES) + 1)])};
+            {vapt_save_script_str}
             
             function saveData() {{
                 const data = {{
                     contrast_verification: contrastSelect.value,
                     description: descriptionTextarea.value,
                     vapt_analysis: {{
-                        {', '.join([f"'{cat}': {{ status: document.getElementById('vapt-status-{i}').value, comment: document.getElementById('vapt-comment-{i}').value }}" for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+                        {vapt_object_entries_str}
                     }}
                 }};
                 localStorage.setItem(storageKey, JSON.stringify(data));
