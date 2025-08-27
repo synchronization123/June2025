@@ -127,7 +127,7 @@ def show_missing_comments_prompt(parent, missing_comments_df, version):
     prompt.resizable(False, False)
 
 def generate_html_report(version, df):
-    """Generate HTML report directly with default values."""
+    """Generate HTML report directly with default values and interactive elements."""
     # Default report data
     report_data = {
         'version': version,
@@ -155,7 +155,7 @@ def generate_html_report(version, df):
         lambda x: '<br>'.join(line for line in x.split('\n') if line.strip()) if pd.notna(x) else ''
     )
     
-    # Generate HTML content
+    # Generate HTML content with JavaScript for interactivity
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -208,8 +208,17 @@ def generate_html_report(version, df):
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            resize: none;
+            resize: vertical;
             text-align: justify;
+            box-sizing: border-box;
+        }}
+        select {{
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            font-size: 14px;
         }}
         .center {{
             text-align: center;
@@ -221,7 +230,54 @@ def generate_html_report(version, df):
             max-width: 1200px;
             margin: auto;
         }}
+        .vapt-comment {{
+            width: 100%;
+            min-height: 60px;
+        }}
     </style>
+    <script>
+        // Load saved data from localStorage on page load
+        document.addEventListener('DOMContentLoaded', () => {{
+            const version = '{version}';
+            const storageKey = `report_${{version}}`;
+            const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
+            
+            // Load Contrast Verification
+            const contrastSelect = document.getElementById('contrast-verification');
+            contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
+            
+            // Load Description
+            const descriptionTextarea = document.getElementById('description');
+            descriptionTextarea.value = savedData.description || '{report_data['description']}';
+            
+            // Load VAPT Analysis
+            {''.join([f"""
+            const status{i} = document.getElementById('vapt-status-{i}');
+            const comment{i} = document.getElementById('vapt-comment-{i}');
+            status{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].status : '{report_data['vapt_analysis'][cat]['status']}';
+            comment{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].comment : '{report_data['vapt_analysis'][cat]['comment']}';
+            """ for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+            
+            // Save data to localStorage on change
+            contrastSelect.addEventListener('change', saveData);
+            descriptionTextarea.addEventListener('input', saveData);
+            {''.join([f"""
+            status{i}.addEventListener('change', saveData);
+            comment{i}.addEventListener('input', saveData);
+            """ for i in range(1, len(VAPT_CATEGORIES) + 1)])};
+            
+            function saveData() {{
+                const data = {{
+                    contrast_verification: contrastSelect.value,
+                    description: descriptionTextarea.value,
+                    vapt_analysis: {{
+                        {', '.join([f"'{cat}': {{ status: document.getElementById('vapt-status-{i}').value, comment: document.getElementById('vapt-comment-{i}').value }}" for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+                    }}
+                }};
+                localStorage.setItem(storageKey, JSON.stringify(data));
+            }}
+        }});
+    </script>
 </head>
 <body>
     <div class="container">
@@ -248,11 +304,14 @@ def generate_html_report(version, df):
                     <td>{datetime.now().strftime('%d-%b-%Y')}</td>
                     <td class="center">{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
                     <td class="center">{len(df[df['Test Approach'] == 'Security Jira'])}</td>
-                    <td>{report_data['contrast_verification']}</td>
+                    <td><select id="contrast-verification">
+                        <option value="Yes">Yes</option>
+                        <option value="No" selected>No</option>
+                    </select></td>
                 </tr>
             </table>
             <h3>Description</h3>
-            <textarea readonly>{report_data['description']}</textarea>
+            <textarea id="description" placeholder="Enter description here...">{report_data['description']}</textarea>
         </div>
         
         <div class="section">
@@ -270,8 +329,12 @@ def generate_html_report(version, df):
                 <tr>
                     <td>{i}</td>
                     <td>{cat}</td>
-                    <td>{report_data['vapt_analysis'][cat]['status']}</td>
-                    <td style="text-align: justify;">{report_data['vapt_analysis'][cat]['comment']}</td>
+                    <td><select id="vapt-status-{i}">
+                        <option value="NA" selected>NA</option>
+                        <option value="Found">Found</option>
+                        <option value="Not Found">Not Found</option>
+                    </select></td>
+                    <td><textarea id="vapt-comment-{i}" class="vapt-comment" placeholder="Enter comment for {cat}..."></textarea></td>
                 </tr>
 """
     html_content += """
@@ -325,7 +388,7 @@ def generate_html_report(version, df):
                 return
 
 def load_json_report():
-    """Load a JSON report and regenerate HTML."""
+    """Load a JSON report and regenerate HTML with interactive elements."""
     json_file = filedialog.askopenfilename(
         title="Select JSON Report",
         filetypes=[("JSON files", "*.json")],
@@ -404,8 +467,17 @@ def load_json_report():
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            resize: none;
+            resize: vertical;
             text-align: justify;
+            box-sizing: border-box;
+        }}
+        select {{
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            font-size: 14px;
         }}
         .center {{
             text-align: center;
@@ -417,7 +489,54 @@ def load_json_report():
             max-width: 1200px;
             margin: auto;
         }}
+        .vapt-comment {{
+            width: 100%;
+            min-height: 60px;
+        }}
     </style>
+    <script>
+        // Load saved data from localStorage on page load
+        document.addEventListener('DOMContentLoaded', () => {{
+            const version = '{version}';
+            const storageKey = `report_${{version}}`;
+            const savedData = JSON.parse(localStorage.getItem(storageKey)) || {{}};
+            
+            // Load Contrast Verification
+            const contrastSelect = document.getElementById('contrast-verification');
+            contrastSelect.value = savedData.contrast_verification || '{report_data['contrast_verification']}';
+            
+            // Load Description
+            const descriptionTextarea = document.getElementById('description');
+            descriptionTextarea.value = savedData.description || '{report_data['description']}';
+            
+            // Load VAPT Analysis
+            {''.join([f"""
+            const status{i} = document.getElementById('vapt-status-{i}');
+            const comment{i} = document.getElementById('vapt-comment-{i}');
+            status{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].status : '{report_data['vapt_analysis'][cat]['status']}';
+            comment{i}.value = savedData.vapt_analysis && savedData.vapt_analysis['{cat}'] ? savedData.vapt_analysis['{cat}'].comment : '{report_data['vapt_analysis'][cat]['comment']}';
+            """ for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+            
+            // Save data to localStorage on change
+            contrastSelect.addEventListener('change', saveData);
+            descriptionTextarea.addEventListener('input', saveData);
+            {''.join([f"""
+            status{i}.addEventListener('change', saveData);
+            comment{i}.addEventListener('input', saveData);
+            """ for i in range(1, len(VAPT_CATEGORIES) + 1)])};
+            
+            function saveData() {{
+                const data = {{
+                    contrast_verification: contrastSelect.value,
+                    description: descriptionTextarea.value,
+                    vapt_analysis: {{
+                        {', '.join([f"'{cat}': {{ status: document.getElementById('vapt-status-{i}').value, comment: document.getElementById('vapt-comment-{i}').value }}" for i, cat in enumerate(VAPT_CATEGORIES, 1)])}
+                    }}
+                }};
+                localStorage.setItem(storageKey, JSON.stringify(data));
+            }}
+        }});
+    </script>
 </head>
 <body>
     <div class="container">
@@ -444,11 +563,14 @@ def load_json_report():
                     <td>{datetime.now().strftime('%d-%b-%Y')}</td>
                     <td class="center">{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
                     <td class="center">{len(df[df['Test Approach'] == 'Security Jira'])}</td>
-                    <td>{report_data['contrast_verification']}</td>
+                    <td><select id="contrast-verification">
+                        <option value="Yes">Yes</option>
+                        <option value="No" selected>No</option>
+                    </select></td>
                 </tr>
             </table>
             <h3>Description</h3>
-            <textarea readonly>{report_data['description']}</textarea>
+            <textarea id="description" placeholder="Enter description here...">{report_data['description']}</textarea>
         </div>
         
         <div class="section">
@@ -466,8 +588,12 @@ def load_json_report():
                 <tr>
                     <td>{i}</td>
                     <td>{cat}</td>
-                    <td>{report_data['vapt_analysis'][cat]['status']}</td>
-                    <td style="text-align: justify;">{report_data['vapt_analysis'][cat]['comment']}</td>
+                    <td><select id="vapt-status-{i}">
+                        <option value="NA" selected>NA</option>
+                        <option value="Found">Found</option>
+                        <option value="Not Found">Not Found</option>
+                    </select></td>
+                    <td><textarea id="vapt-comment-{i}" class="vapt-comment" placeholder="Enter comment for {cat}..."></textarea></td>
                 </tr>
 """
         html_content += """
