@@ -990,10 +990,11 @@ def process_comments(comment):
     
     if match:
         username = match.group(1).strip()
-        cleaned_comment = match.group(2).strip()
+        cleaned_comment = match.group(2).strip().rstrip(';').rstrip()  # Remove trailing semicolons and whitespace
         return username, cleaned_comment
     else:
-        return '', comment.strip()
+        # For non-matching comments, remove trailing semicolons and whitespace
+        return '', comment.strip().rstrip(';').rstrip()
 
 def fetch_data():
     btn_save_token.config(state='disabled')
