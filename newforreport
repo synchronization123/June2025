@@ -168,7 +168,7 @@ def generate_html_report(version, df):
         ttk.Label(inner_frame, text=str(i)).grid(row=i, column=0, padx=5, pady=5)
         ttk.Label(inner_frame, text=category).grid(row=i, column=1, padx=5, pady=5, sticky='w')
         vapt_statuses[category].grid(row=i, column=2, padx=5, pady=5)
-        vapt_statuses[category].set('NA')  # Default to NA
+        vapt_statuses[category].set('NA')
         vapt_comments[category].grid(row=i, column=3, padx=5, pady=5, sticky='ew')
     
     inner_frame.update_idletasks()
@@ -184,10 +184,10 @@ def generate_html_report(version, df):
         }
         
         # Save to JSON
-        json_filename = os.path.join(current_dir, f"{version}_report.json")
+        json_filename = os.path.join(current_dir, f"{version}.json")
         while True:
             try:
-                with open(json_filename, 'w') as f:
+                with open(json_filename, 'w', encoding='utf-8') as f:
                     json.dump(report_data, f, indent=2)
                 text.insert(END, f"Saved report data to {json_filename}\n")
                 break
@@ -199,128 +199,171 @@ def generate_html_report(version, df):
                     return
         
         # Generate HTML
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <title>{version} Build Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f4; }}
-                h1 {{ text-align: center; color: #2c3e50; }}
-                h2 {{ color: #34495e; margin-top: 30px; }}
-                table {{ width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-                th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-                th {{ background-color: #2c3e50; color: white; }}
-                tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                tr:hover {{ background-color: #f1f1f1; }}
-                textarea {{ width: 100%; min-height: 100px; margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }}
-                .section {{ margin-bottom: 40px; }}
-                .container {{ max-width: 1200px; margin: auto; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>{version} Build Report</h1>
-                
-                <div class="section">
-                    <h2>Summary</h2>
-                    <table>
-                        <tr>
-                            <th>Build</th>
-                            <th>Date</th>
-                            <th colspan="2">Total Changelog</th>
-                            <th>Contrast Verification</th>
-                        </tr>
-                        <tr>
-                            <th></th>
-                            <th></th>
-                            <th>Functional Jira</th>
-                            <th>Security Jira</th>
-                            <th></th>
-                        </tr>
-                        <tr>
-                            <td>{version}</td>
-                            <td>{datetime.now().strftime('%d-%b-%Y')}</td>
-                            <td>{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
-                            <td>{len(df[df['Test Approach'] == 'Security Jira'])}</td>
-                            <td>{report_data['contrast_verification']}</td>
-                        </tr>
-                    </table>
-                    <h3>Description</h3>
-                    <textarea readonly>{report_data['description']}</textarea>
-                </div>
-                
-                <div class="section">
-                    <h2>Security Analysis</h2>
-                    <table>
-                        <tr>
-                            <th>Sr. No.</th>
-                            <th>Category</th>
-                            <th>Status</th>
-                            <th>Comment</th>
-                        </tr>
-        """
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{version} Build Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{version} Build Report</h1>
+        
+        <div class="section">
+            <h2>Summary</h2>
+            <table>
+                <tr>
+                    <th>Build</th>
+                    <th>Date</th>
+                    <th colspan="2">Total Changelog</th>
+                    <th>Contrast Verification</th>
+                </tr>
+                <tr>
+                    <th></th>
+                    <th></th>
+                    <th>Functional Jira</th>
+                    <th>Security Jira</th>
+                    <th></th>
+                </tr>
+                <tr>
+                    <td>{version}</td>
+                    <td>{datetime.now().strftime('%d-%b-%Y')}</td>
+                    <td>{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
+                    <td>{len(df[df['Test Approach'] == 'Security Jira'])}</td>
+                    <td>{report_data['contrast_verification']}</td>
+                </tr>
+            </table>
+            <h3>Description</h3>
+            <textarea readonly>{report_data['description']}</textarea>
+        </div>
+        
+        <div class="section">
+            <h2>Security Analysis</h2>
+            <table>
+                <tr>
+                    <th>Sr. No.</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                </tr>
+"""
         for i, cat in enumerate(VAPT_CATEGORIES, 1):
             html_content += f"""
-                        <tr>
-                            <td>{i}</td>
-                            <td>{cat}</td>
-                            <td>{report_data['vapt_analysis'][cat]['status']}</td>
-                            <td>{report_data['vapt_analysis'][cat]['comment']}</td>
-                        </tr>
-            """
+                <tr>
+                    <td>{i}</td>
+                    <td>{cat}</td>
+                    <td>{report_data['vapt_analysis'][cat]['status']}</td>
+                    <td>{report_data['vapt_analysis'][cat]['comment']}</td>
+                </tr>
+"""
         html_content += """
-                    </table>
-                </div>
-                
-                <div class="section">
-                    <h2>Build Table</h2>
-                    <table>
-                        <tr>
-                            <th>Build</th>
-                            <th>Date</th>
-                            <th>Total no of Jiras</th>
-                        </tr>
-                        <tr>
-                            <td>{version}</td>
-                            <td>{datetime.now().strftime('%d-%b-%Y')}</td>
-                            <td>{len(df)}</td>
-                        </tr>
-                    </table>
-                    
-                    <h3>Changelog Details</h3>
-                    <table>
-                        <tr>
-                            <th>Changelog Reviewer</th>
-                            <th>Issue key</th>
-                            <th>Test Approach</th>
-                            <th>Manual Code Review</th>
-                            <th>Manual Security Testing</th>
-                            <th>Remark/Comment</th>
-                        </tr>
-        """
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Build Table</h2>
+            <table>
+                <tr>
+                    <th>Build</th>
+                    <th>Date</th>
+                    <th>Total no of Jiras</th>
+                </tr>
+                <tr>
+                    <td>{version}</td>
+                    <td>{datetime.now().strftime('%d-%b-%Y')}</td>
+                    <td>{len(df)}</td>
+                </tr>
+            </table>
+            
+            <h3>Changelog Details</h3>
+            <table>
+                <tr>
+                    <th>Changelog Reviewer</th>
+                    <th>Issue key</th>
+                    <th>Test Approach</th>
+                    <th>Manual Code Review</th>
+                    <th>Manual Security Testing</th>
+                    <th>Remark/Comment</th>
+                </tr>
+"""
         for _, row in df.iterrows():
             html_content += f"""
-                        <tr>
-                            <td>{row['Changelog Reviewer']}</td>
-                            <td>{row['Issue key']}</td>
-                            <td>{row['Test Approach']}</td>
-                            <td>{row['Manual Secure Code Review']}</td>
-                            <td>{row['Manual Security Testing']}</td>
-                            <td>{row['Filtered Comments'].replace('\n', '<br>') if pd.notna(row['Filtered Comments']) else ''}</td>
-                        </tr>
-            """
+                <tr>
+                    <td>{row['Changelog Reviewer']}</td>
+                    <td>{row['Issue key']}</td>
+                    <td>{row['Test Approach']}</td>
+                    <td>{row['Manual Secure Code Review']}</td>
+                    <td>{row['Manual Security Testing']}</td>
+                    <td>{row['Filtered Comments'].replace('\n', '<br>') if pd.notna(row['Filtered Comments']) else ''}</td>
+                </tr>
+"""
         html_content += """
-                    </table>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+            </table>
+        </div>
+    </div>
+</body>
+</html>
+"""
         
         # Save HTML
-        html_filename = os.path.join(current_dir, f"{version}_report.html")
+        html_filename = os.path.join(current_dir, f"{version}.html")
         while True:
             try:
                 with open(html_filename, 'w', encoding='utf-8') as f:
@@ -355,133 +398,182 @@ def load_json_report():
         return
     
     try:
-        with open(json_file, 'r') as f:
+        with open(json_file, 'r', encoding='utf-8') as f:
             report_data = json.load(f)
         
         version = report_data.get('version', 'Unknown')
-        df = pd.read_excel(os.path.join(current_dir, f"{version}_data.xlsx"))
+        excel_file = os.path.join(current_dir, f"{version}_data.xlsx")
+        if not os.path.exists(excel_file):
+            text.insert(END, f"Error: {excel_file} not found.\n")
+            messagebox.showerror("Error", f"Excel file {excel_file} not found.")
+            return
         
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <title>{version} Build Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f4; }}
-                h1 {{ text-align: center; color: #2c3e50; }}
-                h2 {{ color: #34495e; margin-top: 30px; }}
-                table {{ width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-                th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-                th {{ background-color: #2c3e50; color: white; }}
-                tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                tr:hover {{ background-color: #f1f1f1; }}
-                textarea {{ width: 100%; min-height: 100px; margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }}
-                .section {{ margin-bottom: 40px; }}
-                .container {{ max-width: 1200px; margin: auto; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>{version} Build Report</h1>
-                
-                <div class="section">
-                    <h2>Summary</h2>
-                    <table>
-                        <tr>
-                            <th>Build</th>
-                            <th>Date</th>
-                            <th colspan="2">Total Changelog</th>
-                            <th>Contrast Verification</th>
-                        </tr>
-                        <tr>
-                            <th></th>
-                            <th></th>
-                            <th>Functional Jira</th>
-                            <th>Security Jira</th>
-                            <th></th>
-                        </tr>
-                        <tr>
-                            <td>{version}</td>
-                            <td>{datetime.now().strftime('%d-%b-%Y')}</td>
-                            <td>{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
-                            <td>{len(df[df['Test Approach'] == 'Security Jira'])}</td>
-                            <td>{report_data['contrast_verification']}</td>
-                        </tr>
-                    </table>
-                    <h3>Description</h3>
-                    <textarea readonly>{report_data['description']}</textarea>
-                </div>
-                
-                <div class="section">
-                    <h2>Security Analysis</h2>
-                    <table>
-                        <tr>
-                            <th>Sr. No.</th>
-                            <th>Category</th>
-                            <th>Status</th>
-                            <th>Comment</th>
-                        </tr>
-        """
+        df = pd.read_excel(excel_file)
+        
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{version} Build Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{version} Build Report</h1>
+        
+        <div class="section">
+            <h2>Summary</h2>
+            <table>
+                <tr>
+                    <th>Build</th>
+                    <th>Date</th>
+                    <th colspan="2">Total Changelog</th>
+                    <th>Contrast Verification</th>
+                </tr>
+                <tr>
+                    <th></th>
+                    <th></th>
+                    <th>Functional Jira</th>
+                    <th>Security Jira</th>
+                    <th></th>
+                </tr>
+                <tr>
+                    <td>{version}</td>
+                    <td>{datetime.now().strftime('%d-%b-%Y')}</td>
+                    <td>{len(df[df['Test Approach'] == 'Functional Jira'])}</td>
+                    <td>{len(df[df['Test Approach'] == 'Security Jira'])}</td>
+                    <td>{report_data['contrast_verification']}</td>
+                </tr>
+            </table>
+            <h3>Description</h3>
+            <textarea readonly>{report_data['description']}</textarea>
+        </div>
+        
+        <div class="section">
+            <h2>Security Analysis</h2>
+            <table>
+                <tr>
+                    <th>Sr. No.</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                </tr>
+"""
         for i, cat in enumerate(VAPT_CATEGORIES, 1):
             html_content += f"""
-                        <tr>
-                            <td>{i}</td>
-                            <td>{cat}</td>
-                            <td>{report_data['vapt_analysis'][cat]['status']}</td>
-                            <td>{report_data['vapt_analysis'][cat]['comment']}</td>
-                        </tr>
-            """
+                <tr>
+                    <td>{i}</td>
+                    <td>{cat}</td>
+                    <td>{report_data['vapt_analysis'][cat]['status']}</td>
+                    <td>{report_data['vapt_analysis'][cat]['comment']}</td>
+                </tr>
+"""
         html_content += """
-                    </table>
-                </div>
-                
-                <div class="section">
-                    <h2>Build Table</h2>
-                    <table>
-                        <tr>
-                            <th>Build</th>
-                            <th>Date</th>
-                            <th>Total no of Jiras</th>
-                        </tr>
-                        <tr>
-                            <td>{version}</td>
-                            <td>{datetime.now().strftime('%d-%b-%Y')}</td>
-                            <td>{len(df)}</td>
-                        </tr>
-                    </table>
-                    
-                    <h3>Changelog Details</h3>
-                    <table>
-                        <tr>
-                            <th>Changelog Reviewer</th>
-                            <th>Issue key</th>
-                            <th>Test Approach</th>
-                            <th>Manual Code Review</th>
-                            <th>Manual Security Testing</th>
-                            <th>Remark/Comment</th>
-                        </tr>
-        """
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Build Table</h2>
+            <table>
+                <tr>
+                    <th>Build</th>
+                    <th>Date</th>
+                    <th>Total no of Jiras</th>
+                </tr>
+                <tr>
+                    <td>{version}</td>
+                    <td>{datetime.now().strftime('%d-%b-%Y')}</td>
+                    <td>{len(df)}</td>
+                </tr>
+            </table>
+            
+            <h3>Changelog Details</h3>
+            <table>
+                <tr>
+                    <th>Changelog Reviewer</th>
+                    <th>Issue key</th>
+                    <th>Test Approach</th>
+                    <th>Manual Code Review</th>
+                    <th>Manual Security Testing</th>
+                    <th>Remark/Comment</th>
+                </tr>
+"""
         for _, row in df.iterrows():
             html_content += f"""
-                        <tr>
-                            <td>{row['Changelog Reviewer']}</td>
-                            <td>{row['Issue key']}</td>
-                            <td>{row['Test Approach']}</td>
-                            <td>{row['Manual Secure Code Review']}</td>
-                            <td>{row['Manual Security Testing']}</td>
-                            <td>{row['Filtered Comments'].replace('\n', '<br>') if pd.notna(row['Filtered Comments']) else ''}</td>
-                        </tr>
-            """
+                <tr>
+                    <td>{row['Changelog Reviewer']}</td>
+                    <td>{row['Issue key']}</td>
+                    <td>{row['Test Approach']}</td>
+                    <td>{row['Manual Secure Code Review']}</td>
+                    <td>{row['Manual Security Testing']}</td>
+                    <td>{row['Filtered Comments'].replace('\n', '<br>') if pd.notna(row['Filtered Comments']) else ''}</td>
+                </tr>
+"""
         html_content += """
-                    </table>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+            </table>
+        </div>
+    </div>
+</body>
+</html>
+"""
         
-        html_filename = os.path.join(current_dir, f"{version}_report.html")
+        html_filename = os.path.join(current_dir, f"{version}.html")
         while True:
             try:
                 with open(html_filename, 'w', encoding='utf-8') as f:
@@ -536,7 +628,7 @@ def save_token():
             if not os.access(current_dir, os.W_OK):
                 raise PermissionError(f"No write permission for directory: {current_dir}")
             
-            with open(TOKEN_FILE, 'w') as token_file:
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as token_file:
                 json.dump({'token': token}, token_file, indent=2)
             os.system(f'attrib +h "{TOKEN_FILE}"')
             entry_api_token.delete(0, END)
@@ -564,7 +656,7 @@ def load_token():
             if not os.access(TOKEN_FILE, os.R_OK):
                 raise PermissionError(f"No read permission for file: {TOKEN_FILE}")
             
-            with open(TOKEN_FILE, 'r') as token_file:
+            with open(TOKEN_FILE, 'r', encoding='utf-8') as token_file:
                 data = json.load(token_file)
                 token = data.get('token', '')
                 if not token:
@@ -838,7 +930,6 @@ def fetch_data():
             else:
                 text.insert(END, f"No Jiras found with missing comments for {version}.\n")
             
-            # Enable Generate Report button
             btn_generate_report.config(state='normal', command=lambda: generate_html_report(version, df))
         
         else:
