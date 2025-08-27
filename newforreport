@@ -256,6 +256,11 @@ def generate_html_report(version, df):
         button:hover {{
             background-color: #34495e;
         }}
+        @media print {{
+            #save-json {{
+                display: none;
+            }}
+        }}
         .center {{
             text-align: center;
         }}
@@ -315,7 +320,6 @@ def generate_html_report(version, df):
                                 {vapt_object_entries_str}
                             }}
                         }};
-                        // Save to localStorage
                         localStorage.setItem(storageKey, JSON.stringify(data));
                     }}
                     
@@ -630,6 +634,11 @@ def load_json_report():
         }}
         button:hover {{
             background-color: #34495e;
+        }}
+        @media print {{
+            #save-json {{
+                display: none;
+            }}
         }}
         .center {{
             text-align: center;
