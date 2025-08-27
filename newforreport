@@ -10,37 +10,49 @@ import io
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Path for token file, debug file, and SharePoint file
+# Path for token file and debug file
 TOKEN_FILE = os.path.join(current_dir, 'token.json')
 DEBUG_FILE = os.path.join(current_dir, 'response_debug.txt')
-SHAREPOINT_FILE = os.path.join(current_dir, 'username.xlsx')
-SHAREPOINT_URL = 'https://crm.sharepoint.com/:x/s/qay/pre/hdjdjdjdjdjdj?e=abc'
+USERNAME_FILE = os.path.join(current_dir, 'username.xlsx')
 
-def download_sharepoint_file():
-    """Download username.xlsx from SharePoint to the current directory."""
+# Hardcoded usernames (replace placeholders user1-user20 with actual usernames)
+USERNAMES = [
+    'sam.tam', 'din.time', 'jh.jk',
+    'user1', 'user2', 'user3', 'user4', 'user5',
+    'user6', 'user7', 'user8', 'user9', 'user10',
+    'user11', 'user12', 'user13', 'user14', 'user15',
+    'user16', 'user17', 'user18', 'user19', 'user20'
+]
+
+def create_username_file():
+    """Create username.xlsx with hardcoded usernames in the current directory."""
     try:
-        text.insert(END, f"Downloading username.xlsx from SharePoint...\n")
-        response = requests.get(SHAREPOINT_URL)
-        text.insert(END, f"SharePoint Response Status: {response.status_code}\n")
+        text.insert(END, f"Creating username.xlsx...\n")
+        # Check if directory is writable
+        if not os.access(current_dir, os.W_OK):
+            raise PermissionError(f"No write permission for directory: {current_dir}")
         
-        if response.status_code != 200:
-            text.insert(END, f"SharePoint Raw Response: {response.text[:1000]}...\n")
-            response.raise_for_status()
+        # Create DataFrame with usernames
+        df = pd.DataFrame({'Username': USERNAMES})
         
-        # Save the file
-        with open(SHAREPOINT_FILE, 'wb') as f:
-            f.write(response.content)
-        text.insert(END, f"Saved username.xlsx to {SHAREPOINT_FILE}\n")
-        text.see(END)
-    except requests.exceptions.RequestException as e:
-        text.insert(END, f"SharePoint Download Error: {str(e)}\n")
-        if 'response' in locals():
-            text.insert(END, f"Status Code: {response.status_code}\n")
-            text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-        messagebox.showerror("Error", f"Failed to download username.xlsx: {str(e)}")
+        # Attempt to write the file, handle if it's open
+        while True:
+            try:
+                df.to_excel(USERNAME_FILE, index=False, engine='openpyxl')
+                text.insert(END, f"Saved username.xlsx to {USERNAME_FILE}\n")
+                text.see(END)
+                break
+            except PermissionError:
+                text.insert(END, f"Error: {USERNAME_FILE} is open. Please close the file and try again.\n")
+                messagebox.showwarning("File Open", f"Please close {USERNAME_FILE} and click OK to retry.")
+                time.sleep(5)  # Wait 5 seconds before retrying
+    
+    except PermissionError as e:
+        text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
+        messagebox.showerror("Error", f"Failed to create username.xlsx: {str(e)}")
     except Exception as e:
-        text.insert(END, f"SharePoint Download Error: {str(e)}\n")
-        messagebox.showerror("Error", f"Failed to download username.xlsx: {str(e)}")
+        text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
+        messagebox.showerror("Error", f"Failed to create username.xlsx: {str(e)}")
 
 def save_token():
     """Save or update the entered token to token.json and hide the file."""
@@ -108,8 +120,8 @@ def fetch_data():
         messagebox.showerror("Error", "Please fill in all fields.")
         return
     
-    # Download username.xlsx from SharePoint before fetching Jira data
-    download_sharepoint_file()
+    # Create username.xlsx with hardcoded usernames
+    create_username_file()
     
     text.insert(END, "Starting Jira data fetch...\n")
     
@@ -147,7 +159,7 @@ def fetch_data():
         if response.status_code != 200:
             # Try Basic Auth as a fallback
             text.insert(END, "Bearer token failed, attempting Basic Auth...\n")
-            # Replace 'user@example.com' with your Jira email if needed
+            # Replace 'user@example.com' with your Jira email
             auth_string = f"user@example.com:{token}"
             auth_bytes = auth_string.encode('ascii')
             auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
@@ -181,11 +193,19 @@ def fetch_data():
         text.insert(END, f"Total issues fetched: {len(df)}\n")
         
         if not df.empty:
-            # Save to Excel
+            # Save to Excel, handle if file is open
             filename = os.path.join(current_dir, f"{version}_data.xlsx")
             text.insert(END, f"Exporting to {filename}...\n")
-            df.to_excel(filename, index=False, engine='openpyxl')
-            text.insert(END, "Export complete.\n")
+            while True:
+                try:
+                    df.to_excel(filename, index=False, engine='openpyxl')
+                    text.insert(END, "Export complete.\n")
+                    text.see(END)
+                    break
+                except PermissionError:
+                    text.insert(END, f"Error: {filename} is open. Please close the file and try again.\n")
+                    messagebox.showwarning("File Open", f"Please close {filename} and click OK to retry.")
+                    time.sleep(5)  # Wait 5 seconds before retrying
         else:
             text.insert(END, "No data to export.\n")
     
