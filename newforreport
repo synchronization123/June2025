@@ -3,12 +3,14 @@ import json
 import time
 import requests
 import pandas as pd
-from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox, Toplevel
+from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox, Toplevel, filedialog, LabelFrame
 import base64
 import io
 import re
+import webbrowser
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
+from datetime import datetime
 
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +27,14 @@ USERNAMES = [
     'user6', 'user7', 'user8', 'user9', 'user10',
     'user11', 'user12', 'user13', 'user14', 'user15',
     'user16', 'user17', 'user18', 'user19', 'user20'
+]
+
+# Hardcoded 20 categories for Security Analysis (replace placeholders with actual categories)
+SECURITY_CATEGORIES = [
+    'SQL Injection', 'XSS', 'CSRF', 'IDOR', 'Broken Authentication',
+    'Sensitive Data Exposure', 'XML External Entities', 'Security Misconfiguration', 'Broken Access Control', 'Insufficient Logging',
+    'Category11', 'Category12', 'Category13', 'Category14', 'Category15',
+    'Category16', 'Category17', 'Category18', 'Category19', 'Category20'
 ]
 
 def show_loading_dialog(parent):
@@ -357,7 +367,22 @@ def fetch_data():
         if not df.empty:
             # Save to temporary Excel to process
             temp_filename = os.path.join(current_dir, f"temp_{version}_data.xlsx")
-            df.to_excel(temp_filename, index=False, engine='openpyxl')
+            while True:
+                try:
+                    df.to_excel(temp_filename, index=False, engine='openpyxl')
+                    break
+                except PermissionError as e:
+                    text.insert(END, f"Error writing temp file: {str(e)}\n")
+                    if not show_retry_dialog(root, f"Cannot write temp file: {str(e)}. Retry or stop?"):
+                        text.insert(END, "Stopping data fetch.\n")
+                        btn_save_token.config(state='normal')
+                        btn_fetch.config(state='normal')
+                        loading_dialog.destroy()
+                        if os.path.exists(DEBUG_FILE):
+                            os.remove(DEBUG_FILE)
+                        if os.path.exists(USERNAME_FILE):
+                            os.remove(USERNAME_FILE)
+                        return
             
             # Load back for processing
             df = pd.read_excel(temp_filename)
