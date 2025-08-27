@@ -17,63 +17,91 @@ class ProductManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Product Manager")
-        self.root.geometry("600x600")
-        # Set token file path to script's directory
+        self.root.geometry("600x700")  # Adjusted height for compact layout
+        self.root.minsize(500, 600)  # Minimum size for responsiveness
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.token_file = os.path.join(self.script_dir, "token.json")
         self.token = self.load_token()
 
-        # Create main tabview
-        self.tabview = ctk.CTkTabview(self.root)
-        self.tabview.pack(padx=10, pady=10, fill="both", expand=True)
+        # Main container frame
+        self.main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        self.main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
 
-        # Add Product tab
+        # Tabview
+        self.tabview = ctk.CTkTabview(self.main_frame)
+        self.tabview.grid(row=0, column=0, sticky="nsew")
+        self.main_frame.grid_rowconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+
+        # Product tab
         self.product_tab = self.tabview.add("Product")
 
-        # Token UI
-        self.token_label = ctk.CTkLabel(self.product_tab, text="API Token:")
-        self.token_label.pack(pady=5)
-        self.token_entry = ctk.CTkEntry(self.product_tab, show="*")
-        self.token_entry.pack(pady=5)
-        self.token_status = ctk.CTkLabel(self.product_tab, text="")
-        self.token_status.pack(pady=5)
+        # Token Frame
+        self.token_frame = ctk.CTkFrame(self.product_tab)
+        self.token_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        self.token_frame.grid_columnconfigure(1, weight=1)
+
+        self.token_label = ctk.CTkLabel(self.token_frame, text="API Token:", font=("Arial", 12))
+        self.token_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.token_entry = ctk.CTkEntry(self.token_frame, show="*", width=200)
+        self.token_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        self.token_status = ctk.CTkLabel(self.token_frame, text="", font=("Arial", 10))
+        self.token_status.grid(row=1, column=0, columnspan=2, padx=5, pady=2)
+        ctk.CTkButton(self.token_frame, text="Save Token", command=self.save_token, width=100).grid(row=0, column=2, padx=5, pady=5)
         self.update_token_status()
-        ctk.CTkButton(self.product_tab, text="Save Token", command=self.save_token).pack(pady=5)
 
-        # Product Input Fields
-        ctk.CTkLabel(self.product_tab, text="Product ID (Optional for Update):").pack(pady=5)
-        self.id_entry = ctk.CTkEntry(self.product_tab)
-        self.id_entry.pack(pady=5)
+        # Product Input Frame
+        self.input_frame = ctk.CTkFrame(self.product_tab)
+        self.input_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        self.input_frame.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(self.product_tab, text="Product Name:").pack(pady=5)
-        self.name_entry = ctk.CTkTextbox(self.product_tab, height=50)
-        self.name_entry.pack(pady=5, fill="x")
+        self.id_label = ctk.CTkLabel(self.input_frame, text="Product ID (Optional):", font=("Arial", 12))
+        self.id_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.id_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.id_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-        ctk.CTkLabel(self.product_tab, text="Description:").pack(pady=5)
-        self.desc_entry = ctk.CTkTextbox(self.product_tab, height=100)
-        self.desc_entry.pack(pady=5, fill="x")
+        self.name_label = ctk.CTkLabel(self.input_frame, text="Product Name:", font=("Arial", 12))
+        self.name_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.name_entry = ctk.CTkTextbox(self.input_frame, height=50, width=200, font=("Arial", 12))
+        self.name_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
-        ctk.CTkLabel(self.product_tab, text="Product Type (Number):").pack(pady=5)
-        self.prod_type_entry = ctk.CTkEntry(self.product_tab)
-        self.prod_type_entry.pack(pady=5)
+        self.desc_label = ctk.CTkLabel(self.input_frame, text="Description:", font=("Arial", 12))
+        self.desc_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.desc_entry = ctk.CTkTextbox(self.input_frame, height=80, width=200, font=("Arial", 12))
+        self.desc_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
-        ctk.CTkLabel(self.product_tab, text="SLA Configuration (Number):").pack(pady=5)
-        self.sla_entry = ctk.CTkEntry(self.product_tab)
-        self.sla_entry.pack(pady=5)
+        self.prod_type_label = ctk.CTkLabel(self.input_frame, text="Product Type (Number):", font=("Arial", 12))
+        self.prod_type_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        self.prod_type_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.prod_type_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
 
-        # Buttons
-        ctk.CTkButton(self.product_tab, text="Submit Product", command=self.submit_product).pack(pady=5)
-        ctk.CTkButton(self.product_tab, text="Import Excel", command=self.import_excel).pack(pady=5)
-        ctk.CTkButton(self.product_tab, text="Download Template", command=self.download_template).pack(pady=5)
+        self.sla_label = ctk.CTkLabel(self.input_frame, text="SLA Configuration (Number):", font=("Arial", 12))
+        self.sla_label.grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        self.sla_entry = ctk.CTkEntry(self.input_frame, width=200)
+        self.sla_entry.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+
+        # Button Frame
+        self.button_frame = ctk.CTkFrame(self.product_tab)
+        self.button_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+        ctk.CTkButton(self.button_frame, text="Submit Product", command=self.submit_product, width=120).grid(row=0, column=0, padx=5, pady=5)
+        ctk.CTkButton(self.button_frame, text="Import Excel", command=self.import_excel, width=120).grid(row=0, column=1, padx=5, pady=5)
+        ctk.CTkButton(self.button_frame, text="Download Template", command=self.download_template, width=120).grid(row=0, column=2, padx=5, pady=5)
 
         # Progress Label
-        self.progress_label = ctk.CTkLabel(self.product_tab, text="")
-        self.progress_label.pack(pady=5)
+        self.progress_label = ctk.CTkLabel(self.product_tab, text="", font=("Arial", 12))
+        self.progress_label.grid(row=3, column=0, padx=10, pady=5)
 
         # GUI Console
-        ctk.CTkLabel(self.product_tab, text="Console Output:").pack(pady=5)
-        self.console = ctk.CTkTextbox(self.product_tab, height=100, state="disabled")
-        self.console.pack(pady=5, fill="x")
+        self.console_frame = ctk.CTkFrame(self.product_tab)
+        self.console_frame.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
+        self.product_tab.grid_rowconfigure(4, weight=1)
+        ctk.CTkLabel(self.console_frame, text="Console Output:", font=("Arial", 12)).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.console = ctk.CTkTextbox(self.console_frame, height=100, state="disabled", font=("Arial", 10))
+        self.console.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        self.console_frame.grid_rowconfigure(1, weight=1)
+        self.console_frame.grid_columnconfigure(0, weight=1)
 
     def log_to_console(self, message):
         """Log messages to the GUI console with timestamp."""
@@ -139,9 +167,9 @@ class ProductManagerApp:
             "description": self.desc_entry.get("1.0", tk.END).strip(),
             "prod_type": int(prod_type) if prod_type else None,
             "sla_configuration": int(sla_config) if sla_config else None,
-            "business_criticality": "medium",  # Default value, adjust as needed
-            "platform": "web",  # Default value, adjust as needed
-            "lifecycle": "active"  # Default value, adjust as needed
+            "business_criticality": "medium",
+            "platform": "web",
+            "lifecycle": "active"
         }
 
         self.progress_label.configure(text="Submitting...")
