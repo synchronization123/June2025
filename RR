@@ -1,60 +1,34 @@
 #!/usr/bin/env python3
 import pandas as pd
-import json
 import requests
 import os
 import argparse
 from datetime import datetime
+
+# Hardcoded API token
+API_TOKEN = "your-api-token-here"  # Replace with your actual DefectDojo API token
 
 def log(message):
     """Log messages with timestamp to console."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
-def load_token(token_file):
-    """Load token from token.json in the script's directory."""
-    try:
-        if os.path.exists(token_file):
-            with open(token_file, "r") as f:
-                return json.load(f).get("token", "")
-        else:
-            log("Token file not found.")
-    except Exception as e:
-        log(f"Error loading token from {token_file}: {e}")
-    return ""
-
-def save_token(token, token_file):
-    """Save token to token.json in the script's directory."""
-    try:
-        with open(token_file, "w") as f:
-            json.dump({"token": token}, f)
-        log("Token saved successfully")
-        return True
-    except Exception as e:
-        log(f"Error saving token to {token_file}: {e}")
-        return False
-
-def post_or_put_to_api(data, product_id, token):
-    """Post or Put data to DefectDojo API."""
+def post_to_api(data):
+    """Post data to DefectDojo API."""
     headers = {
-        "Authorization": f"Token {token}",
+        "Authorization": f"Token {API_TOKEN}",
         "Content-Type": "application/json"
     }
-    base_url = "https://demo.defectdojo.org/api/v2/products"
-    url = f"{base_url}/{product_id}/" if product_id else base_url
-    method = "PUT" if product_id else "POST"
+    url = "https://demo.defectdojo.org/api/v2/products"
 
     try:
-        log(f"Submitting data via {method} to {url}")
-        if method == "POST":
-            response = requests.post(url, headers=headers, json=data)
-        else:
-            response = requests.put(url, headers=headers, json=data)
+        log(f"Submitting data to {url}")
+        response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
-        log(f"{method} successful: {response.json()}")
+        log(f"POST successful: {response.json()}")
         return True
     except requests.RequestException as e:
-        error_msg = f"API Error ({method}): {e}"
+        error_msg = f"API Error (POST): {e}"
         if hasattr(e, 'response') and e.response is not None:
             error_msg += f"\nResponse: {e.response.text}"
         log(error_msg)
@@ -62,28 +36,7 @@ def post_or_put_to_api(data, product_id, token):
             log("Server returned 500 Internal Server Error. Check payload or server status.")
         return False
 
-def submit_product(name, description, product_id, token):
-    """Submit product data to DefectDojo API."""
-    if not token:
-        log("Error: No API token provided. Use --set-token to save a token.")
-        return False
-
-    data = {
-        "tags": [],
-        "name": name,
-        "description": description,
-        "prod_numeric_grade": 21747483647,
-        "enable_product_tag_inheritance": True,
-        "enable_simple_risk_acceptance": True,
-        "enable_full_risk_acceptance": True,
-        "disable_sla_breach_notifications": True,
-        "prod_type": 1,
-        "sla_configuration": 1
-    }
-
-    return post_or_put_to_api(data, product_id, token)
-
-def import_excel(file_path, token):
+def import_excel(file_path):
     """Import product data from an Excel file."""
     log(f"Importing Excel file: {file_path}")
     try:
@@ -96,7 +49,19 @@ def import_excel(file_path, token):
         success = True
         for _, row in df.iterrows():
             log(f"Processing product: {row['name']}")
-            if not submit_product(str(row["name"]), str(row["description"]), "", token):
+            data = {
+                "tags": [],
+                "name": str(row["name"]),
+                "description": str(row["description"]),
+                "prod_numeric_grade": 21747483647,
+                "enable_product_tag_inheritance": True,
+                "enable_simple_risk_acceptance": True,
+                "enable_full_risk_acceptance": True,
+                "disable_sla_breach_notifications": True,
+                "prod_type": 1,
+                "sla_configuration": 1
+            }
+            if not post_to_api(data):
                 success = False
         return success
     except Exception as e:
@@ -120,39 +85,23 @@ def download_template():
 
 def main():
     parser = argparse.ArgumentParser(description="DefectDojo Product Manager CLI")
-    parser.add_argument("--set-token", help="Set API token and save to token.json")
-    parser.add_argument("--name", help="Product name for single submission")
-    parser.add_argument("--description", help="Product description for single submission")
-    parser.add_argument("--id", help="Product ID for updating an existing product (PUT)", default="")
     parser.add_argument("--import-excel", help="Path to Excel file for importing products")
     parser.add_argument("--download-template", action="store_true", help="Generate Excel template")
     
     args = parser.parse_args()
-    
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    token_file = os.path.join(script_dir, "token.json")
-    token = load_token(token_file)
-
-    if args.set_token:
-        save_token(args.set_token, token_file)
-        return
 
     if args.download_template:
-        download_template()
+        if download_template():
+            log("Excel template generated successfully")
+        else:
+            log("Excel template generation failed")
         return
 
     if args.import_excel:
-        if import_excel(args.import_excel, token):
+        if import_excel(args.import_excel):
             log("Excel import completed successfully")
         else:
             log("Excel import failed")
-        return
-
-    if args.name and args.description:
-        if submit_product(args.name, args.description, args.id, token):
-            log("Product submission completed successfully")
-        else:
-            log("Product submission failed")
         return
 
     parser.print_help()
