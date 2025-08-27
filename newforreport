@@ -31,10 +31,12 @@ def show_loading_dialog(parent):
     """Show a modal loading dialog."""
     loading_dialog = Toplevel(parent)
     loading_dialog.title("Processing")
-    loading_dialog.geometry("200x100")
+    loading_dialog.geometry("250x120")
     loading_dialog.transient(parent)  # Make it modal
     loading_dialog.grab_set()  # Block interaction with main window
-    ttk.Label(loading_dialog, text="Loading...", font=("Helvetica", 12)).pack(pady=20)
+    frame = ttk.Frame(loading_dialog, padding="10")
+    frame.pack(fill='both', expand=True)
+    ttk.Label(frame, text="Loading...", font=("Helvetica", 12, "bold")).pack(pady=20)
     loading_dialog.resizable(False, False)
     # Center the dialog
     loading_dialog.update_idletasks()
@@ -43,20 +45,50 @@ def show_loading_dialog(parent):
     loading_dialog.geometry(f"+{x}+{y}")
     return loading_dialog
 
+def show_retry_dialog(parent, message):
+    """Show a retry/stop dialog for errors."""
+    retry_dialog = Toplevel(parent)
+    retry_dialog.title("Error")
+    retry_dialog.geometry("300x150")
+    retry_dialog.transient(parent)
+    retry_dialog.grab_set()
+    frame = ttk.Frame(retry_dialog, padding="10")
+    frame.pack(fill='both', expand=True)
+    ttk.Label(frame, text=message, wraplength=250).pack(pady=10)
+    retry_var = [False]  # Use list to modify in nested function
+    
+    def on_retry():
+        retry_var[0] = True
+        retry_dialog.destroy()
+    
+    def on_stop():
+        retry_var[0] = False
+        retry_dialog.destroy()
+    
+    ttk.Button(frame, text="Retry", command=on_retry).pack(side='left', padx=5, pady=10)
+    ttk.Button(frame, text="Stop", command=on_stop).pack(side='right', padx=5, pady=10)
+    
+    # Center the dialog
+    retry_dialog.update_idletasks()
+    x = parent.winfo_x() + (parent.winfo_width() - retry_dialog.winfo_width()) // 2
+    y = parent.winfo_y() + (parent.winfo_height() - retry_dialog.winfo_height()) // 2
+    retry_dialog.geometry(f"+{x}+{y}")
+    retry_dialog.resizable(False, False)
+    
+    parent.wait_window(retry_dialog)
+    return retry_var[0]
+
 def show_missing_comments_prompt(parent, missing_comments_df, version):
     """Show a table of Jiras with no matching comments."""
     prompt = Toplevel(parent)
     prompt.title(f"Jiras with No Comments for {version}")
     prompt.geometry("600x400")
     
-    # Frame for table
     frame = ttk.Frame(prompt, padding="10")
     frame.pack(fill='both', expand=True)
     
-    # Label
     ttk.Label(frame, text=f"Jiras where comments for {version} are not found:").pack(anchor='w', pady=5)
     
-    # Treeview for table
     tree = ttk.Treeview(frame, columns=('Issue key', 'Status', 'Test Approach', 'Comment'), show='headings', height=10)
     tree.heading('Issue key', text='Issue key')
     tree.heading('Status', text='Status')
@@ -67,20 +99,16 @@ def show_missing_comments_prompt(parent, missing_comments_df, version):
     tree.column('Test Approach', width=150)
     tree.column('Comment', width=150)
     
-    # Scrollbar
     scrollbar = ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
     tree.configure(yscrollcommand=scrollbar.set)
     tree.pack(side='left', fill='both', expand=True)
     scrollbar.pack(side='right', fill='y')
     
-    # Populate table
     for _, row in missing_comments_df.iterrows():
         tree.insert('', 'end', values=(row['Issue key'], row['Status'], row['Test Approach'], ''))
     
-    # Close button
     ttk.Button(frame, text="Close", command=prompt.destroy).pack(pady=10)
     
-    # Center the prompt
     prompt.update_idletasks()
     x = parent.winfo_x() + (parent.winfo_width() - prompt.winfo_width()) // 2
     y = parent.winfo_y() + (parent.winfo_height() - prompt.winfo_height()) // 2
@@ -88,36 +116,34 @@ def show_missing_comments_prompt(parent, missing_comments_df, version):
     prompt.resizable(False, False)
 
 def create_username_file():
-    """Create and hide username.xlsx with hardcoded usernames in the current directory."""
-    try:
-        text.insert(END, f"Creating username.xlsx...\n")
-        # Check if directory is writable
-        if not os.access(current_dir, os.W_OK):
-            raise PermissionError(f"No write permission for directory: {current_dir}")
+    """Create username.xlsx with hardcoded usernames in the current directory."""
+    while True:
+        try:
+            text.insert(END, f"Creating username.xlsx...\n")
+            # Check if directory is writable
+            if not os.access(current_dir, os.W_OK):
+                raise PermissionError(f"No write permission for directory: {current_dir}")
+            
+            # Create DataFrame with usernames
+            df = pd.DataFrame({'Username': USERNAMES})
+            
+            # Write the file
+            df.to_excel(USERNAME_FILE, index=False, engine='openpyxl')
+            text.insert(END, f"Saved username.xlsx to {USERNAME_FILE}\n")
+            text.see(END)
+            break
         
-        # Create DataFrame with usernames
-        df = pd.DataFrame({'Username': USERNAMES})
-        
-        # Attempt to write the file, handle if it's open
-        while True:
-            try:
-                df.to_excel(USERNAME_FILE, index=False, engine='openpyxl')
-                # Hide the file (Windows-specific)
-                os.system(f'attrib +h "{USERNAME_FILE}"')
-                text.insert(END, f"Saved and hid username.xlsx to {USERNAME_FILE}\n")
-                text.see(END)
-                break
-            except PermissionError:
-                text.insert(END, f"Error: {USERNAME_FILE} is open. Please close the file and try again.\n")
-                messagebox.showwarning("File Open", f"Please close {USERNAME_FILE} and click OK to retry.")
-                time.sleep(5)  # Wait 5 seconds before retrying
-    
-    except PermissionError as e:
-        text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
-        messagebox.showerror("Error", f"Failed to create username.xlsx: {str(e)}")
-    except Exception as e:
-        text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
-        messagebox.showerror("Error", f"Failed to create username.xlsx: {str(e)}")
+        except PermissionError as e:
+            text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
+            if not show_retry_dialog(root, f"Cannot write {USERNAME_FILE}: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping username.xlsx creation.\n")
+                return False
+        except Exception as e:
+            text.insert(END, f"Error creating username.xlsx: {str(e)}\n")
+            if not show_retry_dialog(root, f"Failed to create username.xlsx: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping username.xlsx creation.\n")
+                return False
+    return True
 
 def save_token():
     """Save or update the entered token to token.json and hide the file."""
@@ -125,26 +151,33 @@ def save_token():
     if not token or token == '*******':
         messagebox.showerror("Error", "Please enter a valid API token.")
         return
-    try:
-        # Check if directory is writable
-        if not os.access(current_dir, os.W_OK):
-            raise PermissionError(f"No write permission for directory: {current_dir}")
+    while True:
+        try:
+            # Check if directory is writable
+            if not os.access(current_dir, os.W_OK):
+                raise PermissionError(f"No write permission for directory: {current_dir}")
+            
+            with open(TOKEN_FILE, 'w') as token_file:
+                json.dump({'token': token}, token_file, indent=2)
+            # Hide the token file (Windows-specific)
+            os.system(f'attrib +h "{TOKEN_FILE}"')
+            entry_api_token.delete(0, END)
+            entry_api_token.insert(0, '*******')  # Mask token after saving
+            text.insert(END, "Token saved/updated successfully.\n")
+            text.see(END)
+            update_token_status()
+            break
         
-        with open(TOKEN_FILE, 'w') as token_file:
-            json.dump({'token': token}, token_file, indent=2)
-        # Hide the token file (Windows-specific)
-        os.system(f'attrib +h "{TOKEN_FILE}"')
-        entry_api_token.delete(0, END)
-        entry_api_token.insert(0, '*******')  # Mask token after saving
-        text.insert(END, "Token saved/updated successfully.\n")
-        text.see(END)
-        update_token_status()
-    except PermissionError as e:
-        messagebox.showerror("Error", f"Failed to save token: {str(e)}")
-        text.insert(END, f"Error saving token: {str(e)}\n")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to save token: {str(e)}")
-        text.insert(END, f"Error saving token: {str(e)}\n")
+        except PermissionError as e:
+            text.insert(END, f"Error saving token: {str(e)}\n")
+            if not show_retry_dialog(root, f"Cannot write {TOKEN_FILE}: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping token save.\n")
+                return
+        except Exception as e:
+            text.insert(END, f"Error saving token: {str(e)}\n")
+            if not show_retry_dialog(root, f"Failed to save token: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping token save.\n")
+                return
 
 def load_token():
     """Load the token from token.json if it exists."""
@@ -210,7 +243,6 @@ def fetch_data():
         token = load_token()
         if not token:
             messagebox.showerror("Error", "No saved token found. Please enter and save a valid token.")
-            # Re-enable buttons and destroy loading dialog
             btn_save_token.config(state='normal')
             btn_fetch.config(state='normal')
             loading_dialog.destroy()
@@ -218,14 +250,17 @@ def fetch_data():
     
     if not token or not version:
         messagebox.showerror("Error", "Please fill in all fields.")
-        # Re-enable buttons and destroy loading dialog
         btn_save_token.config(state='normal')
         btn_fetch.config(state='normal')
         loading_dialog.destroy()
         return
     
-    # Create username.xlsx with hardcoded usernames
-    create_username_file()
+    # Create username.xlsx
+    if not create_username_file():
+        btn_save_token.config(state='normal')
+        btn_fetch.config(state='normal')
+        loading_dialog.destroy()
+        return
     
     text.insert(END, "Starting Jira data fetch...\n")
     
@@ -251,38 +286,53 @@ def fetch_data():
         # CSV export endpoint
         url = f'https://jira.crm.com/sr/jira.issueviews:searchrequest-csv-all-fields/temp/SearchRequest.csv?jqlQuery={jql}'
         
-        text.insert(END, "Attempting fetch with Bearer token...\n")
-        response = requests.get(url, headers=headers_bearer)
-        text.insert(END, f"API Response Status (Bearer): {response.status_code}\n")
-        
-        # Save raw response to debug file
-        with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
-            debug_file.write(response.text)
-        text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
-        
-        if response.status_code != 200:
-            # Try Basic Auth as a fallback
-            text.insert(END, "Bearer token failed, attempting Basic Auth...\n")
-            # Replace 'user@example.com' with your Jira email
-            auth_string = f"user@example.com:{token}"
-            auth_bytes = auth_string.encode('ascii')
-            auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
-            headers_basic = {
-                'Authorization': f'Basic {auth_base64}',
-                'Accept': 'text/csv'
-            }
+        while True:
+            try:
+                text.insert(END, "Attempting fetch with Bearer token...\n")
+                response = requests.get(url, headers=headers_bearer)
+                text.insert(END, f"API Response Status (Bearer): {response.status_code}\n")
+                
+                # Save raw response to debug file
+                with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
+                    debug_file.write(response.text)
+                text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
+                
+                if response.status_code != 200:
+                    # Try Basic Auth as a fallback
+                    text.insert(END, "Bearer token failed, attempting Basic Auth...\n")
+                    auth_string = f"user@example.com:{token}"  # Replace with your Jira email
+                    auth_bytes = auth_string.encode('ascii')
+                    auth_base64 = base64.b64encode(auth_bytes).decode('ascii')
+                    headers_basic = {
+                        'Authorization': f'Basic {auth_base64}',
+                        'Accept': 'text/csv'
+                    }
+                    
+                    response = requests.get(url, headers=headers_basic)
+                    text.insert(END, f"API Response Status (Basic): {response.status_code}\n")
+                    
+                    # Save raw response to debug file
+                    with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
+                        debug_file.write(response.text)
+                    text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
+                    
+                    if response.status_code != 200:
+                        text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
+                        raise requests.exceptions.RequestException(f"Non-200 status: {response.status_code}")
+                break
             
-            response = requests.get(url, headers=headers_basic)
-            text.insert(END, f"API Response Status (Basic): {response.status_code}\n")
-            
-            # Save raw response to debug file
-            with open(DEBUG_FILE, 'w', encoding='utf-8') as debug_file:
-                debug_file.write(response.text)
-            text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
-            
-            if response.status_code != 200:
-                text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                text.insert(END, f"API Request Error: {str(e)}\n")
+                if not show_retry_dialog(root, f"API request failed: {str(e)}. Retry or stop?"):
+                    text.insert(END, "Stopping data fetch.\n")
+                    btn_save_token.config(state='normal')
+                    btn_fetch.config(state='normal')
+                    loading_dialog.destroy()
+                    if os.path.exists(DEBUG_FILE):
+                        os.remove(DEBUG_FILE)
+                    if os.path.exists(USERNAME_FILE):
+                        os.remove(USERNAME_FILE)
+                    return
         
         # Parse CSV response
         try:
@@ -291,15 +341,16 @@ def fetch_data():
         except pd.errors.ParserError as e:
             text.insert(END, f"CSV Parse Error: {str(e)}\n")
             text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-            messagebox.showerror("Error", f"Failed to parse CSV response: {str(e)}")
-            # Re-enable buttons and destroy loading dialog
-            btn_save_token.config(state='normal')
-            btn_fetch.config(state='normal')
-            loading_dialog.destroy()
-            # Delete debug file
-            if os.path.exists(DEBUG_FILE):
-                os.remove(DEBUG_FILE)
-            return
+            if not show_retry_dialog(root, f"Failed to parse CSV: {str(e)}. Retry or stop?"):
+                text.insert(END, "Stopping data fetch.\n")
+                btn_save_token.config(state='normal')
+                btn_fetch.config(state='normal')
+                loading_dialog.destroy()
+                if os.path.exists(DEBUG_FILE):
+                    os.remove(DEBUG_FILE)
+                if os.path.exists(USERNAME_FILE):
+                    os.remove(USERNAME_FILE)
+                return
         
         text.insert(END, f"Total issues fetched: {len(df)}\n")
         
@@ -343,12 +394,10 @@ def fetch_data():
                 for col in comment_columns:
                     comment = str(row[col]) if pd.notna(row[col]) else ''
                     if comment:
-                        # Check if comment contains any username and the version
                         comment_lower = comment.lower()
                         username_match = any(username in comment_lower for username in usernames)
                         version_match = version.lower() in comment_lower
                         if username_match and version_match:
-                            # Process comment for username and cleaned content
                             username, cleaned_comment = process_comments(comment)
                             if cleaned_comment:
                                 filtered_comments.append(cleaned_comment)
@@ -368,12 +417,10 @@ def fetch_data():
             
             for index, row in df.iterrows():
                 comment = str(row['Filtered Comments']).lower() if pd.notna(row['Filtered Comments']) else ''
-                # Check for Secure code review
                 if 'secure code review: done' in comment:
                     df.at[index, 'Manual Secure Code Review'] = 'Done'
                 elif 'secure code review: na' in comment:
                     df.at[index, 'Manual Secure Code Review'] = 'NA'
-                # Check for Manual Testing
                 if 'manual testing: done' in comment:
                     df.at[index, 'Manual Security Testing'] = 'Done'
                 elif 'manual testing: na' in comment:
@@ -401,10 +448,28 @@ def fetch_data():
                     text.insert(END, "Export complete with formatted comments.\n")
                     text.see(END)
                     break
-                except PermissionError:
-                    text.insert(END, f"Error: {filename} is open. Please close the file and try again.\n")
-                    messagebox.showwarning("File Open", f"Please close {filename} and click OK to retry.")
-                    time.sleep(5)  # Wait 5 seconds before retrying
+                except PermissionError as e:
+                    text.insert(END, f"Error: {filename} is open or inaccessible: {str(e)}\n")
+                    if not show_retry_dialog(root, f"Cannot write {filename}: {str(e)}. Retry or stop?"):
+                        text.insert(END, "Stopping data export.\n")
+                        btn_save_token.config(state='normal')
+                        btn_fetch.config(state='normal')
+                        loading_dialog.destroy()
+                        if os.path.exists(DEBUG_FILE):
+                            os.remove(DEBUG_FILE)
+                        if os.path.exists(USERNAME_FILE):
+                            os.remove(USERNAME_FILE)
+                        if os.path.exists(temp_filename):
+                            os.remove(temp_filename)
+                        return
+            
+            # Delete username.xlsx after formatting comments
+            if os.path.exists(USERNAME_FILE):
+                try:
+                    os.remove(USERNAME_FILE)
+                    text.insert(END, f"Deleted {USERNAME_FILE}\n")
+                except Exception as e:
+                    text.insert(END, f"Error deleting {USERNAME_FILE}: {str(e)}\n")
             
             # Delete temporary file
             if os.path.exists(temp_filename):
@@ -419,17 +484,18 @@ def fetch_data():
         else:
             text.insert(END, "No data to export.\n")
     
-    except requests.exceptions.RequestException as e:
-        text.insert(END, f"API Request Error: {str(e)}\n")
-        if 'response' in locals():
-            text.insert(END, f"Status Code: {response.status_code}\n")
-            text.insert(END, f"Raw Response: {response.text[:1000]}...\n")
-            text.insert(END, f"Raw response saved to: {DEBUG_FILE}\n")
-        messagebox.showerror("Error", f"API Request Failed: {str(e)}")
-    
     except Exception as e:
-        messagebox.showerror("Error", str(e))
         text.insert(END, f"Error: {str(e)}\n")
+        if not show_retry_dialog(root, f"Unexpected error: {str(e)}. Retry or stop?"):
+            text.insert(END, "Stopping data fetch.\n")
+            btn_save_token.config(state='normal')
+            btn_fetch.config(state='normal')
+            loading_dialog.destroy()
+            if os.path.exists(DEBUG_FILE):
+                os.remove(DEBUG_FILE)
+            if os.path.exists(USERNAME_FILE):
+                os.remove(USERNAME_FILE)
+            return
     
     finally:
         # Re-enable buttons and destroy loading dialog
