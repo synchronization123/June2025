@@ -1,258 +1,161 @@
 #!/usr/bin/env python3
-import tkinter as tk
-import customtkinter as ctk
 import pandas as pd
 import json
 import requests
 import os
-from tkinter import filedialog, messagebox
-import threading
+import argparse
 from datetime import datetime
 
-# Set appearance mode and default theme
-ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("blue")
+def log(message):
+    """Log messages with timestamp to console."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
 
-class ProductManagerApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Product Manager")
-        self.root.geometry("600x500")  # Compact size with scrollbar
-        self.root.minsize(500, 400)
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.token_file = os.path.join(self.script_dir, "token.json")
-        self.token = self.load_token()
-
-        # Main scrollable frame
-        self.scrollable_frame = ctk.CTkScrollableFrame(self.root, fg_color="transparent")
-        self.scrollable_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
-
-        # Tabview
-        self.tabview = ctk.CTkTabview(self.scrollable_frame)
-        self.tabview.grid(row=0, column=0, sticky="nsew")
-        self.scrollable_frame.grid_rowconfigure(0, weight=1)
-        self.scrollable_frame.grid_columnconfigure(0, weight=1)
-
-        # Product tab
-        self.product_tab = self.tabview.add("Product")
-
-        # Token Frame (4 elements: label, entry, status, button)
-        self.token_frame = ctk.CTkFrame(self.product_tab)
-        self.token_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        self.token_frame.grid_columnconfigure(1, weight=1)
-
-        self.token_label = ctk.CTkLabel(self.token_frame, text="API Token:", font=("Arial", 12))
-        self.token_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.token_entry = ctk.CTkEntry(self.token_frame, show="*", width=150)
-        self.token_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        self.token_status = ctk.CTkLabel(self.token_frame, text="", font=("Arial", 10))
-        self.token_status.grid(row=0, column=2, padx=5, pady=5)
-        ctk.CTkButton(self.token_frame, text="Save Token", command=self.save_token, width=100).grid(row=0, column=3, padx=5, pady=5)
-        self.update_token_status()
-
-        # Input Frame (4 elements: ID label, ID entry, Name label, Name textbox)
-        self.input_frame = ctk.CTkFrame(self.product_tab)
-        self.input_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
-        self.input_frame.grid_columnconfigure((1, 3), weight=1)
-
-        self.id_label = ctk.CTkLabel(self.input_frame, text="Product ID (Optional):", font=("Arial", 12))
-        self.id_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.id_entry = ctk.CTkEntry(self.input_frame, width=150)
-        self.id_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        self.name_label = ctk.CTkLabel(self.input_frame, text="Product Name:", font=("Arial", 12))
-        self.name_label.grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        self.name_entry = ctk.CTkTextbox(self.input_frame, height=50, width=150, font=("Arial", 12))
-        self.name_entry.grid(row=0, column=3, padx=5, pady=5, sticky="ew")
-
-        # Row for Description (4 elements: Description label, Description textbox, empty placeholders)
-        self.desc_label = ctk.CTkLabel(self.input_frame, text="Description:", font=("Arial", 12))
-        self.desc_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.desc_entry = ctk.CTkTextbox(self.input_frame, height=80, width=150, font=("Arial", 12))
-        self.desc_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-        # Placeholders to maintain 4 elements per row
-        ctk.CTkLabel(self.input_frame, text="", width=150).grid(row=1, column=2, padx=5, pady=5)
-        ctk.CTkLabel(self.input_frame, text="", width=150).grid(row=1, column=3, padx=5, pady=5)
-
-        # Button Frame (3 buttons, centered)
-        self.button_frame = ctk.CTkFrame(self.product_tab)
-        self.button_frame.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
-        ctk.CTkButton(self.button_frame, text="Submit Product", command=self.submit_product, width=120).grid(row=0, column=0, padx=5, pady=5)
-        ctk.CTkButton(self.button_frame, text="Import Excel", command=self.import_excel, width=120).grid(row=0, column=1, padx=5, pady=5)
-        ctk.CTkButton(self.button_frame, text="Download Template", command=self.download_template, width=120).grid(row=0, column=2, padx=5, pady=5)
-
-        # Progress Label
-        self.progress_label = ctk.CTkLabel(self.product_tab, text="", font=("Arial", 12))
-        self.progress_label.grid(row=3, column=0, padx=10, pady=5)
-
-        # GUI Console
-        self.console_frame = ctk.CTkFrame(self.product_tab)
-        self.console_frame.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
-        self.product_tab.grid_rowconfigure(4, weight=1)
-        ctk.CTkLabel(self.console_frame, text="Console Output:", font=("Arial", 12)).grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.console = ctk.CTkTextbox(self.console_frame, height=100, state="disabled", font=("Arial", 10))
-        self.console.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        self.console_frame.grid_rowconfigure(1, weight=1)
-        self.console_frame.grid_columnconfigure(0, weight=1)
-
-    def log_to_console(self, message):
-        """Log messages to the GUI console with timestamp."""
-        self.console.configure(state="normal")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.console.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.console.see(tk.END)
-        self.console.configure(state="disabled")
-
-    def load_token(self):
-        """Load token from token.json in the script's directory."""
-        try:
-            if os.path.exists(self.token_file):
-                with open(self.token_file, "r") as f:
-                    return json.load(f).get("token", "")
-        except Exception as e:
-            self.log_to_console(f"Error loading token from {self.token_file}: {e}")
-        return ""
-
-    def save_token(self):
-        """Save token to token.json in the script's directory and update status."""
-        token = self.token_entry.get()
-        try:
-            with open(self.token_file, "w") as f:
-                json.dump({"token": token}, f)
-            self.token = token
-            self.update_token_status()
-            messagebox.showinfo("Success", "Token saved successfully!")
-            self.log_to_console("Token saved successfully")
-        except Exception as e:
-            self.log_to_console(f"Error saving token to {self.token_file}: {e}")
-            messagebox.showerror("Error", f"Failed to save token: {e}")
-
-    def update_token_status(self):
-        """Update token status label color and text."""
-        if self.token:
-            self.token_status.configure(text="Token Present", text_color="green")
+def load_token(token_file):
+    """Load token from token.json in the script's directory."""
+    try:
+        if os.path.exists(token_file):
+            with open(token_file, "r") as f:
+                return json.load(f).get("token", "")
         else:
-            self.token_status.configure(text="No Token", text_color="red")
+            log("Token file not found.")
+    except Exception as e:
+        log(f"Error loading token from {token_file}: {e}")
+    return ""
 
-    def submit_product(self):
-        """Submit product data to DefectDojo API (POST or PUT)."""
-        if not self.token:
-            messagebox.showerror("Error", "Please save a valid API token.")
-            self.log_to_console("Error: No API token provided")
-            return
+def save_token(token, token_file):
+    """Save token to token.json in the script's directory."""
+    try:
+        with open(token_file, "w") as f:
+            json.dump({"token": token}, f)
+        log("Token saved successfully")
+        return True
+    except Exception as e:
+        log(f"Error saving token to {token_file}: {e}")
+        return False
 
-        data = {
-            "tags": [],
-            "name": self.name_entry.get("1.0", tk.END).strip(),
-            "description": self.desc_entry.get("1.0", tk.END).strip(),
-            "prod_numeric_grade": 21747483647,
-            "enable_product_tag_inheritance": True,
-            "enable_simple_risk_acceptance": True,
-            "enable_full_risk_acceptance": True,
-            "disable_sla_breach_notifications": True,
-            "prod_type": 1,
-            "sla_configuration": 1
-        }
+def post_or_put_to_api(data, product_id, token):
+    """Post or Put data to DefectDojo API."""
+    headers = {
+        "Authorization": f"Token {token}",
+        "Content-Type": "application/json"
+    }
+    base_url = "https://demo.defectdojo.org/api/v2/products"
+    url = f"{base_url}/{product_id}/" if product_id else base_url
+    method = "PUT" if product_id else "POST"
 
-        product_id = self.id_entry.get()
-        self.progress_label.configure(text="Submitting...")
-        self.log_to_console("Submitting product data...")
-        threading.Thread(target=self.post_or_put_to_api, args=(data, product_id), daemon=True).start()
+    try:
+        log(f"Submitting data via {method} to {url}")
+        if method == "POST":
+            response = requests.post(url, headers=headers, json=data)
+        else:
+            response = requests.put(url, headers=headers, json=data)
+        response.raise_for_status()
+        log(f"{method} successful: {response.json()}")
+        return True
+    except requests.RequestException as e:
+        error_msg = f"API Error ({method}): {e}"
+        if hasattr(e, 'response') and e.response is not None:
+            error_msg += f"\nResponse: {e.response.text}"
+        log(error_msg)
+        if hasattr(e, 'response') and e.response.status_code == 500:
+            log("Server returned 500 Internal Server Error. Check payload or server status.")
+        return False
 
-    def post_or_put_to_api(self, data, product_id):
-        """Post or Put data to DefectDojo API."""
-        headers = {
-            "Authorization": f"Token {self.token}",
-            "Content-Type": "application/json"
-        }
-        base_url = "https://demo.defectdojo.org/api/v2/products"
-        url = f"{base_url}/{product_id}/" if product_id else base_url
-        method = "PUT" if product_id else "POST"
+def submit_product(name, description, product_id, token):
+    """Submit product data to DefectDojo API."""
+    if not token:
+        log("Error: No API token provided. Use --set-token to save a token.")
+        return False
 
-        try:
-            if method == "POST":
-                response = requests.post(url, headers=headers, json=data)
-            else:
-                response = requests.put(url, headers=headers, json=data)
-            response.raise_for_status()
-            self.progress_label.configure(text="Submission Successful!", text_color="green")
-            self.log_to_console(f"{method} successful: {response.json()}")
-        except requests.RequestException as e:
-            error_msg = f"API Error ({method}): {e}"
-            if hasattr(e, 'response') and e.response is not None:
-                error_msg += f"\nResponse: {e.response.text}"
-            self.progress_label.configure(text=f"Submission Failed: {e}", text_color="red")
-            self.log_to_console(error_msg)
-            if hasattr(e, 'response') and e.response.status_code == 500:
-                self.log_to_console("Server returned 500 Internal Server Error. Check payload or server status.")
-        finally:
-            self.root.after(3000, lambda: self.progress_label.configure(text=""))
+    data = {
+        "tags": [],
+        "name": name,
+        "description": description,
+        "prod_numeric_grade": 21747483647,
+        "enable_product_tag_inheritance": True,
+        "enable_simple_risk_acceptance": True,
+        "enable_full_risk_acceptance": True,
+        "disable_sla_breach_notifications": True,
+        "prod_type": 1,
+        "sla_configuration": 1
+    }
 
-    def import_excel(self):
-        """Import product data from an Excel file."""
-        file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx *.xls")])
-        if not file_path:
-            return
+    return post_or_put_to_api(data, product_id, token)
 
-        self.progress_label.configure(text="Importing...")
-        self.log_to_console(f"Importing Excel file: {file_path}")
-        try:
-            df = pd.read_excel(file_path)
-            required_columns = ["name", "description"]
-            if not all(col in df.columns for col in required_columns):
-                messagebox.showerror("Error", "Excel file must contain columns: name, description")
-                self.log_to_console("Error: Missing required columns in Excel file")
-                self.progress_label.configure(text="")
-                return
+def import_excel(file_path, token):
+    """Import product data from an Excel file."""
+    log(f"Importing Excel file: {file_path}")
+    try:
+        df = pd.read_excel(file_path)
+        required_columns = ["name", "description"]
+        if not all(col in df.columns for col in required_columns):
+            log("Error: Excel file must contain columns: name, description")
+            return False
 
-            for _, row in df.iterrows():
-                data = {
-                    "tags": [],
-                    "name": str(row["name"]),
-                    "description": str(row["description"]),
-                    "prod_numeric_grade": 21747483647,
-                    "enable_product_tag_inheritance": True,
-                    "enable_simple_risk_acceptance": True,
-                    "enable_full_risk_acceptance": True,
-                    "disable_sla_breach_notifications": True,
-                    "prod_type": 1,
-                    "sla_configuration": 1
-                }
-                product_id = ""  # No ID for import
-                self.post_or_put_to_api(data, product_id)
+        success = True
+        for _, row in df.iterrows():
+            log(f"Processing product: {row['name']}")
+            if not submit_product(str(row["name"]), str(row["description"]), "", token):
+                success = False
+        return success
+    except Exception as e:
+        log(f"Import Error: {e}")
+        return False
 
-        except Exception as e:
-            self.progress_label.configure(text=f"Import Failed: {e}", text_color="red")
-            self.log_to_console(f"Import Error: {e}")
-        finally:
-            self.root.after(3000, lambda: self.progress_label.configure(text=""))
+def download_template():
+    """Download Excel template with headers in the script's directory."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "product_template.xlsx")
+    log(f"Generating Excel template: {file_path}")
+    try:
+        columns = ["name", "description"]
+        df = pd.DataFrame(columns=columns)
+        df.to_excel(file_path, index=False)
+        log(f"Template saved to {file_path}")
+        return True
+    except Exception as e:
+        log(f"Template Error: {e}")
+        return False
 
-    def download_template(self):
-        """Download Excel template with headers in the script's directory."""
-        file_path = filedialog.asksaveasfilename(
-            initialdir=self.script_dir,
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx")]
-        )
-        if not file_path:
-            return
+def main():
+    parser = argparse.ArgumentParser(description="DefectDojo Product Manager CLI")
+    parser.add_argument("--set-token", help="Set API token and save to token.json")
+    parser.add_argument("--name", help="Product name for single submission")
+    parser.add_argument("--description", help="Product description for single submission")
+    parser.add_argument("--id", help="Product ID for updating an existing product (PUT)", default="")
+    parser.add_argument("--import-excel", help="Path to Excel file for importing products")
+    parser.add_argument("--download-template", action="store_true", help="Generate Excel template")
+    
+    args = parser.parse_args()
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    token_file = os.path.join(script_dir, "token.json")
+    token = load_token(token_file)
 
-        self.progress_label.configure(text="Generating Template...")
-        self.log_to_console("Generating Excel template...")
-        try:
-            columns = ["name", "description"]
-            df = pd.DataFrame(columns=columns)
-            df.to_excel(file_path, index=False)
-            self.progress_label.configure(text="Template Generated!", text_color="green")
-            self.log_to_console(f"Template saved to {file_path}")
-        except Exception as e:
-            self.progress_label.configure(text=f"Template Generation Failed: {e}", text_color="red")
-            self.log_to_console(f"Template Error: {e}")
-        finally:
-            self.root.after(3000, lambda: self.progress_label.configure(text=""))
+    if args.set_token:
+        save_token(args.set_token, token_file)
+        return
+
+    if args.download_template:
+        download_template()
+        return
+
+    if args.import_excel:
+        if import_excel(args.import_excel, token):
+            log("Excel import completed successfully")
+        else:
+            log("Excel import failed")
+        return
+
+    if args.name and args.description:
+        if submit_product(args.name, args.description, args.id, token):
+            log("Product submission completed successfully")
+        else:
+            log("Product submission failed")
+        return
+
+    parser.print_help()
 
 if __name__ == "__main__":
-    root = ctk.CTk()
-    app = ProductManagerApp(root)
-    root.mainloop()
+    main()
