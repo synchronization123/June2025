@@ -123,50 +123,62 @@ def fetch_data():
                 'fields': ['key', 'status', 'components', 'comment']
             }
             
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()  # Raise exception for bad status codes
-            
-            result = response.json()
-            issues = result.get('issues', [])
-            
-            if not issues:
-                break
-            
-            total_issues += len(issues)
-            text.insert(END, f"Fetched {len(issues)} issues in this batch. Total so far: {total_issues}\n")
-            
-            # Process issues in the batch
-            for issue in issues:
-                comments = [c['body'] for c in issue['fields'].get('comment', {}).get('comments', [])]
-                components = [c['name'] for c in issue['fields'].get('components', [])]
-                max_comments = max(max_comments, len(comments))
-                max_components = max(max_components, len(components))
+            try:
+                response = requests.post(url, headers=headers, json=payload)
+                text.insert(END, f"API Response Status: {response.status_code}\n")
+                if response.status_code != 200:
+                    text.insert(END, f"Raw Response: {response.text[:500]}...\n")  # Log first 500 chars of response
+                    response.raise_for_status()
                 
-                row = {
-                    'Issue key': issue['key'],
-                    'Status': issue['fields']['status']['name']
-                }
-                # Handle components
-                for i in range(max_components):
-                    col_name = f'Component{i+1}'
-                    row[col_name] = components[i] if i < len(components) else ''
+                result = response.json()
+                issues = result.get('issues', [])
                 
-                # Handle comments
-                for i in range(max_comments):
-                    col_name = f'Comment{i+1}'
-                    row[col_name] = comments[i] if i < len(comments) else ''
+                if not issues:
+                    break
                 
-                data.append(row)
+                total_issues += len(issues)
+                text.insert(END, f"Fetched {len(issues)} issues in this batch. Total so far: {total_issues}\n")
+                
+                # Process issues in the batch
+                for issue in issues:
+                    comments = [c['body'] for c in issue['fields'].get('comment', {}).get('comments', [])]
+                    components = [c['name'] for c in issue['fields'].get('components', [])]
+                    max_comments = max(max_comments, len(comments))
+                    max_components = max(max_components, len(components))
+                    
+                    row = {
+                        'Issue key': issue['key'],
+                        'Status': issue['fields']['status']['name']
+                    }
+                    # Handle components
+                    for i in range(max_components):
+                        col_name = f'Component{i+1}'
+                        row[col_name] = components[i] if i < len(components) else ''
+                    
+                    # Handle comments
+                    for i in range(max_comments):
+                        col_name = f'Comment{i+1}'
+                        row[col_name] = comments[i] if i < len(comments) else ''
+                    
+                    data.append(row)
+                
+                start_at += BATCH_SIZE
+                text.see(END)  # Scroll to the latest console output
+                root.update()  # Update GUI to keep it responsive
+                
+                # Add 15-second delay between batch requests
+                if issues:  # Only delay if more issues are expected
+                    text.insert(END, "Waiting 15 seconds before next batch...\n")
+                    text.see(END)
+                    time.sleep(15)
             
-            start_at += BATCH_SIZE
-            text.see(END)  # Scroll to the latest console output
-            root.update()  # Update GUI to keep it responsive
-            
-            # Add 15-second delay between batch requests
-            if issues:  # Only delay if more issues are expected
-                text.insert(END, "Waiting 15 seconds before next batch...\n")
-                text.see(END)
-                time.sleep(15)
+            except requests.exceptions.RequestException as e:
+                text.insert(END, f"API Request Error: {str(e)}\n")
+                if 'response' in locals():
+                    text.insert(END, f"Status Code: {response.status_code}\n")
+                    text.insert(END, f"Raw Response: {response.text[:500]}...\n")  # Log first 500 chars
+                messagebox.showerror("Error", f"API Request Failed: {str(e)}")
+                return
         
         text.insert(END, f"Total issues fetched: {total_issues}\n")
         
