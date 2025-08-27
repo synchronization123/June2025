@@ -1,56 +1,200 @@
-import os
+#!/usr/bin/env python3
+import tkinter as tk
+import customtkinter as ctk
+import pandas as pd
+import json
 import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-import hashlib
+import os
+from tkinter import filedialog, messagebox
+import threading
 
-# === Configuration ===
-html_input = 'input.html'
-html_output = 'output.html'
-image_folder = 'images'
-cookie_name = 'sessionid'
-cookie_value = 'your_cookie_value_here'  # ← Paste from Chrome DevTools
-cookie_domain = 'demo.defectdojo.org'
+# Set appearance mode and default theme
+ctk.set_appearance_mode("System")  # Options: "Light", "Dark", "System"
+ctk.set_default_color_theme("blue")  # Options: "blue", "green", "dark-blue"
 
-# Set up session with manual cookie
-session = requests.Session()
-session.cookies.set(cookie_name, cookie_value, domain=cookie_domain)
+class ProductManagerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Product Manager")
+        self.root.geometry("600x500")
+        # Set token file path to script's directory
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.token_file = os.path.join(self.script_dir, "token.json")
+        self.token = self.load_token()
 
-# Create image folder
-os.makedirs(image_folder, exist_ok=True)
+        # Create main tabview
+        self.tabview = ctk.CTkTabview(self.root)
+        self.tabview.pack(padx=10, pady=10, fill="both", expand=True)
 
-# Parse HTML
-with open(html_input, 'r', encoding='utf-8') as f:
-    soup = BeautifulSoup(f, 'html.parser')
+        # Add Product tab
+        self.product_tab = self.tabview.add("Product")
 
-# Process images
-for img_tag in soup.find_all('img'):
-    src = img_tag.get('src')
-    if not src or not src.startswith('http'):
-        continue
+        # Token UI
+        self.token_label = ctk.CTkLabel(self.product_tab, text="API Token:")
+        self.token_label.pack(pady=5)
+        self.token_entry = ctk.CTkEntry(self.product_tab, show="*")
+        self.token_entry.pack(pady=5)
+        self.token_status = ctk.CTkLabel(self.product_tab, text="")
+        self.token_status.pack(pady=5)
+        self.update_token_status()
+        ctk.CTkButton(self.product_tab, text="Save Token", command=self.save_token).pack(pady=5)
 
-    ext = '.png'
-    filename = hashlib.md5(src.encode()).hexdigest() + ext
-    local_path = os.path.join(image_folder, filename)
+        # Product Input Fields
+        ctk.CTkLabel(self.product_tab, text="Product Name:").pack(pady=5)
+        self.name_entry = ctk.CTkTextbox(self.product_tab, height=50)
+        self.name_entry.pack(pady=5, fill="x")
 
-    if not os.path.exists(local_path):
+        ctk.CTkLabel(self.product_tab, text="Description:").pack(pady=5)
+        self.desc_entry = ctk.CTkTextbox(self.product_tab, height=100)
+        self.desc_entry.pack(pady=5, fill="x")
+
+        ctk.CTkLabel(self.product_tab, text="Product Type (Number):").pack(pady=5)
+        self.prod_type_entry = ctk.CTkEntry(self.product_tab)
+        self.prod_type_entry.pack(pady=5)
+
+        ctk.CTkLabel(self.product_tab, text="SLA Configuration (Number):").pack(pady=5)
+        self.sla_entry = ctk.CTkEntry(self.product_tab)
+        self.sla_entry.pack(pady=5)
+
+        # Buttons
+        ctk.CTkButton(self.product_tab, text="Submit Product", command=self.submit_product).pack(pady=5)
+        ctk.CTkButton(self.product_tab, text="Import Excel", command=self.import_excel).pack(pady=5)
+        ctk.CTkButton(self.product_tab, text="Download Template", command=self.download_template).pack(pady=5)
+
+        # Progress Label
+        self.progress_label = ctk.CTkLabel(self.product_tab, text="")
+        self.progress_label.pack(pady=5)
+
+    def load_token(self):
+        """Load token from token.json in the script's directory if it exists."""
         try:
-            resp = session.get(src, timeout=10)
-            if 'image' in resp.headers.get('Content-Type', ''):
-                with open(local_path, 'wb') as f_out:
-                    f_out.write(resp.content)
-                print(f"✅ Image saved: {src}")
-            else:
-                print(f"⚠️ Not an image (Content-Type: {resp.headers.get('Content-Type', '')})")
-                continue
+            if os.path.exists(self.token_file):
+                with open(self.token_file, "r") as f:
+                    return json.load(f).get("token", "")
         except Exception as e:
-            print(f"❌ Error downloading {src}: {e}")
-            continue
+            print(f"Error loading token from {self.token_file}: {e}")
+        return ""
 
-    img_tag['src'] = os.path.join(image_folder, filename)
+    def save_token(self):
+        """Save token to token.json in the script's directory and update status."""
+        token = self.token_entry.get()
+        try:
+            with open(self.token_file, "w") as f:
+                json.dump({"token": token}, f)
+            self.token = token
+            self.update_token_status()
+            messagebox.showinfo("Success", "Token saved successfully!")
+        except Exception as e:
+            print(f"Error saving token to {self.token_file}: {e}")
+            messagebox.showerror("Error", f"Failed to save token: {e}")
 
-# Save updated HTML
-with open(html_output, 'w', encoding='utf-8') as f:
-    f.write(str(soup))
+    def update_token_status(self):
+        """Update token status label color and text."""
+        if self.token:
+            self.token_status.configure(text="Token Present", text_color="green")
+        else:
+            self.token_status.configure(text="No Token", text_color="red")
 
-print(f"\n✅ Finished. Updated HTML saved to: {html_output}")
+    def validate_number(self, value):
+        """Validate if input is a number."""
+        return value.isdigit() or value == ""
+
+    def submit_product(self):
+        """Submit product data to DefectDojo API."""
+        if not self.token:
+            messagebox.showerror("Error", "Please save a valid API token.")
+            return
+
+        prod_type = self.prod_type_entry.get()
+        sla_config = self.sla_entry.get()
+
+        if not self.validate_number(prod_type) or not self.validate_number(sla_config):
+            messagebox.showerror("Error", "Product Type and SLA Configuration must be numbers.")
+            return
+
+        data = {
+            "name": self.name_entry.get("1.0", tk.END).strip(),
+            "description": self.desc_entry.get("1.0", tk.END).strip(),
+            "prod_type": int(prod_type) if prod_type else None,
+            "sla_configuration": int(sla_config) if sla_config else None
+        }
+
+        self.progress_label.configure(text="Submitting...")
+        threading.Thread(target=self.post_to_api, args=(data,), daemon=True).start()
+
+    def post_to_api(self, data):
+        """Post data to DefectDojo API."""
+        headers = {"Authorization": f"Token {self.token}"}
+        url = "https://demo.defectdojo.org/api/v2/products"
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            print(f"API Response: {response.json()}")
+            self.progress_label.configure(text="Submission Successful!", text_color="green")
+        except requests.RequestException as e:
+            print(f"API Error: {e}")
+            self.progress_label.configure(text=f"Submission Failed: {e}", text_color="red")
+        finally:
+            self.root.after(3000, lambda: self.progress_label.configure(text=""))
+
+    def import_excel(self):
+        """Import product data from an Excel file."""
+        file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx *.xls")])
+        if not file_path:
+            return
+
+        self.progress_label.configure(text="Importing...")
+        try:
+            df = pd.read_excel(file_path)
+            required_columns = ["name", "description", "prod_type", "sla_configuration"]
+            if not all(col in df.columns for col in required_columns):
+                messagebox.showerror("Error", "Excel file must contain columns: name, description, prod_type, sla_configuration")
+                self.progress_label.configure(text="")
+                return
+
+            for _, row in df.iterrows():
+                if not self.validate_number(str(row["prod_type"])) or not self.validate_number(str(row["sla_configuration"])):
+                    messagebox.showerror("Error", "Product Type and SLA Configuration must be numbers.")
+                    self.progress_label.configure(text="")
+                    return
+
+                data = {
+                    "name": str(row["name"]),
+                    "description": str(row["description"]),
+                    "prod_type": int(row["prod_type"]),
+                    "sla_configuration": int(row["sla_configuration"])
+                }
+                self.post_to_api(data)
+
+        except Exception as e:
+            print(f"Import Error: {e}")
+            self.progress_label.configure(text=f"Import Failed: {e}", text_color="red")
+        finally:
+            self.root.after(3000, lambda: self.progress_label.configure(text=""))
+
+    def download_template(self):
+        """Download Excel template with headers in the script's directory."""
+        file_path = filedialog.asksaveasfilename(
+            initialdir=self.script_dir,
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx")]
+        )
+        if not file_path:
+            return
+
+        self.progress_label.configure(text="Generating Template...")
+        try:
+            df = pd.DataFrame(columns=["name", "description", "prod_type", "sla_configuration"])
+            df.to_excel(file_path, index=False)
+            print(f"Template saved to {file_path}")
+            self.progress_label.configure(text="Template Generated!", text_color="green")
+        except Exception as e:
+            print(f"Template Error: {e}")
+            self.progress_label.configure(text=f"Template Generation Failed: {e}", text_color="red")
+        finally:
+            self.root.after(3000, lambda: self.progress_label.configure(text=""))
+
+if __name__ == "__main__":
+    root = ctk.CTk()
+    app = ProductManagerApp(root)
+    root.mainloop()
