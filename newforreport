@@ -3,14 +3,13 @@ import json
 import time
 import requests
 import pandas as pd
-from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox, Toplevel, filedialog, LabelFrame
+from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox, Toplevel, filedialog
 import base64
 import io
 import re
-import webbrowser
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
-from datetime import datetime
+import webbrowser
 
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,12 +28,28 @@ USERNAMES = [
     'user16', 'user17', 'user18', 'user19', 'user20'
 ]
 
-# Hardcoded 20 categories for Security Analysis (replace placeholders with actual categories)
-SECURITY_CATEGORIES = [
-    'SQL Injection', 'XSS', 'CSRF', 'IDOR', 'Broken Authentication',
-    'Sensitive Data Exposure', 'XML External Entities', 'Security Misconfiguration', 'Broken Access Control', 'Insufficient Logging',
-    'Category11', 'Category12', 'Category13', 'Category14', 'Category15',
-    'Category16', 'Category17', 'Category18', 'Category19', 'Category20'
+# Hardcoded VAPT categories
+VAPT_CATEGORIES = [
+    'SQL Injection',
+    'Cross-Site Scripting (XSS)',
+    'Cross-Site Request Forgery (CSRF)',
+    'Insecure Direct Object References (IDOR)',
+    'Security Misconfiguration',
+    'Sensitive Data Exposure',
+    'Missing Function Level Access Control',
+    'Using Components with Known Vulnerabilities',
+    'Insufficient Logging and Monitoring',
+    'Broken Authentication',
+    'Broken Access Control',
+    'XML External Entities (XXE)',
+    'Insecure Deserialization',
+    'Server-Side Request Forgery (SSRF)',
+    'Open Redirects',
+    'File Upload Vulnerabilities',
+    'Command Injection',
+    'Path Traversal',
+    'API Security Issues',
+    'Mobile Security Issues'
 ]
 
 def show_loading_dialog(parent):
@@ -367,22 +382,7 @@ def fetch_data():
         if not df.empty:
             # Save to temporary Excel to process
             temp_filename = os.path.join(current_dir, f"temp_{version}_data.xlsx")
-            while True:
-                try:
-                    df.to_excel(temp_filename, index=False, engine='openpyxl')
-                    break
-                except PermissionError as e:
-                    text.insert(END, f"Error writing temp file: {str(e)}\n")
-                    if not show_retry_dialog(root, f"Cannot write temp file: {str(e)}. Retry or stop?"):
-                        text.insert(END, "Stopping data fetch.\n")
-                        btn_save_token.config(state='normal')
-                        btn_fetch.config(state='normal')
-                        loading_dialog.destroy()
-                        if os.path.exists(DEBUG_FILE):
-                            os.remove(DEBUG_FILE)
-                        if os.path.exists(USERNAME_FILE):
-                            os.remove(USERNAME_FILE)
-                        return
+            df.to_excel(temp_filename, index=False, engine='openpyxl')
             
             # Load back for processing
             df = pd.read_excel(temp_filename)
@@ -508,19 +508,6 @@ def fetch_data():
         
         else:
             text.insert(END, "No data to export.\n")
-    
-    except Exception as e:
-        text.insert(END, f"Error: {str(e)}\n")
-        if not show_retry_dialog(root, f"Unexpected error: {str(e)}. Retry or stop?"):
-            text.insert(END, "Stopping data fetch.\n")
-            btn_save_token.config(state='normal')
-            btn_fetch.config(state='normal')
-            loading_dialog.destroy()
-            if os.path.exists(DEBUG_FILE):
-                os.remove(DEBUG_FILE)
-            if os.path.exists(USERNAME_FILE):
-                os.remove(USERNAME_FILE)
-            return
     
     finally:
         # Re-enable buttons and destroy loading dialog
