@@ -10,7 +10,7 @@ import re
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 import webbrowser
-from datetime import datetime
+import pdfkit  # Added for PDF generation
 
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -128,10 +128,10 @@ def show_missing_comments_prompt(parent, missing_comments_df, version):
     prompt.resizable(False, False)
 
 def generate_html_report(version, df):
-    """Show a form to generate the HTML report with all fields and scrollable VAPT table."""
+    """Show a form to generate the HTML and PDF report with all fields and scrollable VAPT table."""
     report_window = Toplevel(root)
     report_window.title(f"Generate {version} Build Report")
-    report_window.geometry("900x700")  # Increased size for better visibility
+    report_window.geometry("900x700")
     
     # Main frame with scrollable canvas
     main_frame = ttk.Frame(report_window)
@@ -194,7 +194,7 @@ def generate_html_report(version, df):
     table_frame.columnconfigure(3, weight=1)  # Make Comment column expandable
     
     # Save and Generate Report Button
-    ttk.Button(frame, text="Save and Generate Report", command=lambda: save_and_generate()).pack(pady=15)
+    ttk.Button(frame, text="Save and Generate PDF Report", command=lambda: save_and_generate()).pack(pady=15)
     
     # Save and Generate Report Logic
     def save_and_generate():
@@ -225,7 +225,7 @@ def generate_html_report(version, df):
             lambda x: x.replace('\n', '<br>') if pd.notna(x) else ''
         )
         
-        # Generate HTML
+        # Generate HTML content
         html_content = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -395,8 +395,7 @@ def generate_html_report(version, df):
             try:
                 with open(html_filename, 'w', encoding='utf-8') as f:
                     f.write(html_content)
-                text.insert(END, f"Generated HTML report: {html_filename}\n")
-                webbrowser.open(f"file://{os.path.abspath(html_filename)}")
+                text.insert(END, f"Saved HTML report: {html_filename}\n")
                 break
             except PermissionError as e:
                 text.insert(END, f"Error saving {html_filename}: {str(e)}\n")
@@ -404,17 +403,35 @@ def generate_html_report(version, df):
                     text.insert(END, "Stopping HTML report generation.\n")
                     report_window.destroy()
                     return
+        
+        # Convert HTML to PDF
+        pdf_filename = os.path.join(current_dir, f"{version}.pdf")
+        while True:
+            try:
+                # Specify wkhtmltopdf path if not in system PATH
+                config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")  # Update path for your system
+                pdfkit.from_string(html_content, pdf_filename, configuration=config)
+                text.insert(END, f"Generated PDF report: {pdf_filename}\n")
+                webbrowser.open(f"file://{os.path.abspath(pdf_filename)}")
+                break
+            except Exception as e:
+                text.insert(END, f"Error generating PDF {pdf_filename}: {str(e)}\n")
+                if not show_retry_dialog(root, f"Cannot generate {pdf_filename}: {str(e)}. Retry or stop?"):
+                    text.insert(END, "Stopping PDF report generation.\n")
+                    report_window.destroy()
+                    return
+        
         report_window.destroy()
     
     # Center the window
     report_window.update_idletasks()
     x = root.winfo_x() + (root.winfo_width() - report_window.winfo_width()) // 2
-    y = root.winfo_y() + (root.winfo_height() - report_window.winfo_height()) // 2
+    y = root.winfo_y() + (parent.winfo_height() - report_window.winfo_height()) // 2
     report_window.geometry(f"+{x}+{y}")
     report_window.resizable(False, False)
 
 def load_json_report():
-    """Load a JSON report and regenerate HTML."""
+    """Load a JSON report and regenerate HTML and PDF."""
     json_file = filedialog.askopenfilename(
         title="Select JSON Report",
         filetypes=[("JSON files", "*.json")],
@@ -604,18 +621,34 @@ def load_json_report():
 </html>
 """
         
+        # Save HTML
         html_filename = os.path.join(current_dir, f"{version}.html")
         while True:
             try:
                 with open(html_filename, 'w', encoding='utf-8') as f:
                     f.write(html_content)
-                text.insert(END, f"Regenerated HTML report from {json_file}: {html_filename}\n")
-                webbrowser.open(f"file://{os.path.abspath(html_filename)}")
+                text.insert(END, f"Saved HTML report: {html_filename}\n")
                 break
             except PermissionError as e:
                 text.insert(END, f"Error saving {html_filename}: {str(e)}\n")
                 if not show_retry_dialog(root, f"Cannot write {html_filename}: {str(e)}. Retry or stop?"):
-                    text.insert(END, "Stopping HTML report regeneration.\n")
+                    text.insert(END, "Stopping HTML report generation.\n")
+                    return
+        
+        # Convert HTML to PDF
+        pdf_filename = os.path.join(current_dir, f"{version}.pdf")
+        while True:
+            try:
+                # Specify wkhtmltopdf path if not in system PATH
+                config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")  # Update path for your system
+                pdfkit.from_string(html_content, pdf_filename, configuration=config)
+                text.insert(END, f"Generated PDF report: {pdf_filename}\n")
+                webbrowser.open(f"file://{os.path.abspath(pdf_filename)}")
+                break
+            except Exception as e:
+                text.insert(END, f"Error generating PDF {pdf_filename}: {str(e)}\n")
+                if not show_retry_dialog(root, f"Cannot generate {pdf_filename}: {str(e)}. Retry or stop?"):
+                    text.insert(END, "Stopping PDF report generation.\n")
                     return
     
     except Exception as e:
