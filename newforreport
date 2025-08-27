@@ -1,7 +1,6 @@
 import os
 import json
 import time
-from cryptography.fernet import Fernet
 import requests
 import pandas as pd
 from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox
@@ -9,51 +8,23 @@ from tkinter import Tk, ttk, Text, Scrollbar, END, messagebox
 # Get the current directory of the script
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Paths for key and token files
-KEY_FILE = os.path.join(current_dir, 'fernet_key.key')
+# Path for token file
 TOKEN_FILE = os.path.join(current_dir, 'token.json')
 
 # Batch size for fetching issues
 BATCH_SIZE = 100
 
-def generate_key():
-    """Generate and save a Fernet key if it doesn't exist, then hide it."""
-    if not os.path.exists(KEY_FILE):
-        key = Fernet.generate_key()
-        with open(KEY_FILE, 'wb') as key_file:
-            key_file.write(key)
-        # Hide the key file (Windows-specific)
-        os.system(f'attrib +h "{KEY_FILE}"')
-    with open(KEY_FILE, 'rb') as key_file:
-        return key_file.read()
-
-def encrypt_token(token, fernet):
-    """Encrypt the token, save it to token.json, and hide the file."""
-    encrypted_token = fernet.encrypt(token.encode())
-    with open(TOKEN_FILE, 'w') as token_file:
-        json.dump({'token': encrypted_token.decode()}, token_file)
-    # Hide the token file (Windows-specific)
-    os.system(f'attrib +h "{TOKEN_FILE}"')
-
-def decrypt_token(fernet):
-    """Decrypt the token from token.json if it exists."""
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, 'r') as token_file:
-            data = json.load(token_file)
-            encrypted_token = data.get('token', '')
-            if encrypted_token:
-                return fernet.decrypt(encrypted_token.encode()).decode()
-    return ''
-
 def save_token():
-    """Save or update the entered token to token.json."""
+    """Save or update the entered token to token.json and hide the file."""
     token = entry_api_token.get().strip()
     if not token or token == '*******':
         messagebox.showerror("Error", "Please enter a valid API token.")
         return
     try:
-        fernet = Fernet(generate_key())
-        encrypt_token(token, fernet)
+        with open(TOKEN_FILE, 'w') as token_file:
+            json.dump({'token': token}, token_file)
+        # Hide the token file (Windows-specific)
+        os.system(f'attrib +h "{TOKEN_FILE}"')
         entry_api_token.delete(0, END)
         entry_api_token.insert(0, '*******')  # Mask token after saving
         text.insert(END, "Token saved/updated successfully.\n")
@@ -62,21 +33,27 @@ def save_token():
         messagebox.showerror("Error", f"Failed to save token: {str(e)}")
         text.insert(END, f"Error saving token: {str(e)}\n")
 
+def load_token():
+    """Load the token from token.json if it exists."""
+    if os.path.exists(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, 'r') as token_file:
+                data = json.load(token_file)
+                return data.get('token', '')
+        except Exception as e:
+            text.insert(END, f"Error loading token: {str(e)}\n")
+            return ''
+    return ''
+
 def fetch_data():
     token = entry_api_token.get().strip()
     version = entry_version.get().strip()
     
     # If token is masked, try to load the actual token from file
     if token == '*******':
-        try:
-            fernet = Fernet(generate_key())
-            token = decrypt_token(fernet)
-            if not token:
-                messagebox.showerror("Error", "No saved token found. Please enter and save a valid token.")
-                return
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load token: {str(e)}")
-            text.insert(END, f"Error loading token: {str(e)}\n")
+        token = load_token()
+        if not token:
+            messagebox.showerror("Error", "No saved token found. Please enter and save a valid token.")
             return
     
     if not token or not version:
@@ -127,7 +104,7 @@ def fetch_data():
                 response = requests.post(url, headers=headers, json=payload)
                 text.insert(END, f"API Response Status: {response.status_code}\n")
                 if response.status_code != 200:
-                    text.insert(END, f"Raw Response: {response.text[:500]}...\n")  # Log first 500 chars of response
+                    text.insert(END, f"Raw Response: {response.text[:500]}...\n")  # Log first 500 chars
                     response.raise_for_status()
                 
                 result = response.json()
@@ -219,8 +196,7 @@ entry_api_token.grid(row=0, column=1, pady=5)
 
 # Load token if it exists
 try:
-    fernet = Fernet(generate_key())
-    saved_token = decrypt_token(fernet)
+    saved_token = load_token()
     if saved_token:
         entry_api_token.insert(0, '*******')  # Mask token in GUI
 except Exception as e:
