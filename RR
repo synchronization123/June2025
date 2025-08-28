@@ -51,6 +51,7 @@ HTML = """
         .select2-selection--multiple { min-height: 38px !important; }
         .select2-selection__rendered { line-height: 38px !important; }
         .select2-selection__choice { margin-top: 6px !important; }
+        .select2-results__options { max-height: 400px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -163,8 +164,16 @@ HTML = """
                 cache: true
             },
             placeholder: 'Search for products',
-            minimumInputLength: 0, // Allow loading all products without typing
+            minimumInputLength: 0,
             allowClear: true
+        });
+
+        $('#products').on('select2:open', function () {
+            var select2 = $(this).data('select2');
+            select2.$results.find('.select2-results__option').remove(); // Clear previous
+            var searchField = select2.$dropdown.find('.select2-search__field');
+            searchField.val('');
+            searchField.trigger('input');
         });
 
         $('#lead').select2({
@@ -241,7 +250,7 @@ def search_products():
     q = request.args.get('q', '')
     all_products = []
     offset = 0
-    limit = 100  # Fetch in batches of 100 to avoid overwhelming the API
+    limit = 25  # Set to default PAGE_SIZE to avoid issues
     while True:
         params = {'name__icontains': q, 'limit': limit, 'offset': offset}
         resp = requests.get(f'{DEFECT_DOJO_URL}/api/v2/products/', params=params, headers=HEADERS)
@@ -250,7 +259,7 @@ def search_products():
         data = resp.json()
         products = data.get('results', [])
         all_products.extend([{'id': p['id'], 'text': p['name']} for p in products])
-        if len(products) < limit:  # No more pages
+        if data.get('next') is None or len(products) < limit:  # Better check using 'next'
             break
         offset += limit
     return jsonify(all_products)
@@ -258,12 +267,21 @@ def search_products():
 @app.route('/get_users')
 def get_users():
     q = request.args.get('q', '')
-    params = {'search': q, 'is_active': 'true', 'limit': 500, 'offset': 0}
-    resp = requests.get(f'{DEFECT_DOJO_URL}/api/v2/users/', params=params, headers=HEADERS)
-    if resp.status_code != 200:
-        return jsonify([])
-    users = resp.json().get('results', [])
-    return jsonify([{'id': u['id'], 'text': f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u['username']} for u in users])
+    all_users = []
+    offset = 0
+    limit = 25
+    while True:
+        params = {'search': q, 'is_active': 'true', 'limit': limit, 'offset': offset}
+        resp = requests.get(f'{DEFECT_DOJO_URL}/api/v2/users/', params=params, headers=HEADERS)
+        if resp.status_code != 200:
+            return jsonify([])
+        data = resp.json()
+        users = data.get('results', [])
+        all_users.extend([{'id': u['id'], 'text': f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u['username']} for u in users])
+        if data.get('next') is None or len(users) < limit:
+            break
+        offset += limit
+    return jsonify(all_users)
 
 @app.route('/create_engagements', methods=['POST'])
 def create_engagements():
