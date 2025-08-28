@@ -1,58 +1,18 @@
-import pandas as pd
 import requests
-import json
 
-# Configuration
-API_URL = "https://your-defectdojo-url.com/api/v2/metadata"  # Replace with your DefectDojo URL
-TOKEN = "jsjsjjjd"  # Your API token
-EXCEL_FILE = "metadata.xlsx"  # Path to your Excel file
+# Replace with your DefectDojo details
+BASE_URL = "https://demo.defectdojo.org"
+ATTACHMENT_PATH = "/media/engagements/attachments/yourfile.html"  # update with real path
+FULL_URL = BASE_URL + ATTACHMENT_PATH
 
-# Headers for API request
-headers = {
-    "Authorization": f"Token {TOKEN}",
-    "Content-Type": "application/json"
+# If authentication is needed, add headers (example for API key)
+HEADERS = {
+    "Authorization": "Token YOUR_API_KEY_HERE"  # remove if not required
 }
 
-# Read Excel file
-try:
-    df = pd.read_excel(EXCEL_FILE)
-except Exception as e:
-    print(f"Error reading Excel file: {e}")
-    exit(1)
+response = requests.get(FULL_URL, headers=HEADERS, stream=True)
 
-# Validate required columns
-required_columns = ['product', 'name', 'value']
-if not all(col in df.columns for col in required_columns):
-    print(f"Excel file must contain columns: {required_columns}")
-    exit(1)
-
-# Function to add metadata via API
-def add_metadata(product, name, value):
-    payload = {
-        "product": product,
-        "name": name,
-        "value": value
-    }
-    
-    try:
-        response = requests.post(API_URL, headers=headers, data=json.dumps(payload))
-        if response.status_code == 201:
-            print(f"Successfully added metadata: {name} = {value} for product {product}")
-        else:
-            print(f"Failed to add metadata for {name}: {response.status_code} - {response.text}")
-    except requests.RequestException as e:
-        print(f"Error making API request for {name}: {e}")
-
-# Iterate through Excel rows and send API requests
-for index, row in df.iterrows():
-    product = row['product']
-    name = row['name']
-    value = row['value']
-    
-    if pd.isna(product) or pd.isna(name) or pd.isna(value):
-        print(f"Skipping row {index + 2}: Missing data in product, name, or value")
-        continue
-    
-    add_metadata(product, name, value)
-
-print("Metadata upload completed.")
+print("Status:", response.status_code)
+print("\n--- Headers ---")
+for k, v in response.headers.items():
+    print(f"{k}: {v}")
