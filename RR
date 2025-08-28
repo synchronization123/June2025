@@ -19,61 +19,76 @@ HEADERS = {
     'Content-Type': 'application/json'
 }
 
+SELECT2_CSS = """
+.select2-container{box-sizing:border-box;display:inline-block;margin:0;position:relative;vertical-align:middle}.select2-container .select2-selection--single{box-sizing:border-box;cursor:pointer;display:block;height:28px;user-select:none;-webkit-user-select:none}.select2-container .select2-selection--single .select2-selection__rendered{display:block;padding-left:8px;padding-right:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.select2-container .select2-selection--single .select2-selection__clear{background-color:transparent;border:none;font-size:1em}.select2-container[dir="rtl"] .select2-selection--single .select2-selection__rendered{padding-right:8px;padding-left:20px}.select2-container .select2-selection--multiple{box-sizing:border-box;cursor:pointer;display:block;min-height:32px;user-select:none;-webkit-user-select:none}.select2-container .select2-selection--multiple .select2-selection__rendered{display:inline-block;overflow:hidden;padding:0;text-overflow:ellipsis;white-space:nowrap}.select2-container .select2-search--inline{float:left}.select2-container .select2-search--inline .select2-search__field{box-sizing:border-box;border:none;font-size:100%;margin-top:5px;padding:0}.select2-container .select2-search--inline .select2-search__field::-webkit-search-cancel-button{-webkit-appearance:none}.select2-dropdown{background-color:#fff;border:1px solid #aaa;border-radius:4px;box-sizing:border-box;display:block;position:absolute;left:-100000px;width:100%;z-index:1051}.select2-results{display:block}.select2-results__options{list-style:none;margin:0;padding:0}.select2-results__option{padding:6px;user-select:none;-webkit-user-select:none}.select2-results__option[aria-selected]{cursor:pointer}.select2-container--open .select2-dropdown{left:0}.select2-container--open .select2-dropdown--above{border-bottom:none;border-bottom-left-radius:0;border-bottom-right-radius:0}.select2-container--open .select2-dropdown--below{border-top:none;border-top-left-radius:0;border-top-right-radius:0}.select2-search--dropdown{display:block;padding:4px}.select2-search--dropdown .select2-search__field{padding:4px;width:100%;box-sizing:border-box}.select2-search--dropdown .select2-search__field::-webkit-search-cancel-button{-webkit-appearance:none}.select2-search--dropdown.select2-search--hide{display:none}.select2-close-mask{border:0;margin:0;padding:0;display:block;position:fixed;left:0;top:0;min-height:100%;min-width:100%;height:auto;width:auto;opacity:0;z-index:99;background-color:#fff;filter:alpha(opacity=0)}.select2-hidden-accessible{border:0 !important;clip:rect(0 0 0 0) !important;-webkit-clip-path:inset(50%) !important;clip-path:inset(50%) !important;height:1px !important;overflow:hidden !important;padding:0 !important;position:absolute !important;width:1px !important;white-space:nowrap !important}.select2-container--default .select2-selection--single{background-color:#fff;border:1px solid #aaa;border-radius:4px}.select2-container--default .select2-selection--single .select2-selection__rendered{color:#444;line-height:28px}.select2-container--default .select2-selection--single .select2-selection__clear{cursor:pointer;float:right;font-weight:bold;height:26px;margin-right:20px;padding-right:0px}.select2-container--default .select2-selection--single .select2-selection__placeholder{color:#999}.select2-container--default .select2-selection--single .select2-selection__arrow{height:26px;position:absolute;top:1px;right:1px;width:20px}.select2-container--default .select2-selection--single .select2-selection__arrow b{border-color:#888 transparent transparent transparent;border-style:solid;border-width:5px 4px 0 4px;height:0;left:50%;margin-left:-4px;margin-top:-2px;position:absolute;top:50%;width:0}.select2-container--default[dir="rtl"] .select2-selection--single .select2-selection__clear{float:left}.select2-container--default[dir="rtl"] .select2-selection--single .select2-selection__arrow{left:1px;right:auto}.select2-container--default .select2-selection--multiple{background-color:white;border:1px solid #aaa;border-radius:4px;cursor:text}.select2-container--default .select2-selection--multiple .select2-selection__rendered{box-sizing:border-box;list-style:none;margin:0;padding:0 5px;width:100%}.select2-container--default .select2-selection--multiple .select2-selection__rendered li{list-style:none}.select2-container--default .select2-selection--multiple .select2-selection__clear{cursor:pointer;float:right;font-weight:bold;margin-top:5px;margin-right:10px;padding:1px}.select2-container--default .select2-selection--multiple .select2-selection__choice{background-color:#e4e4e4;border:1px solid #aaa;border-radius:4px;cursor:default;float:left;margin-right:5px;margin-top:5px;padding:0 5px}.select2-container--default .select2-selection--multiple .select2-selection__choice__remove{color:#999;cursor:pointer;display:inline-block;font-weight:bold;margin-right:2px}.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover{color:#333}.select2-container--default[dir="rtl"] .select2-selection--multiple .select2-selection__choice, .select2-container--default[dir="rtl"] .select2-selection--multiple .select2-search--inline{float:right}.select2-container--default[dir="rtl"] .select2-selection--multiple .select2-selection__choice{margin-left:5px;margin-right:auto}.select2-container--default[dir="rtl"] .select2-selection--multiple .select2-selection__choice__remove{margin-left:2px;margin-right:auto}.select2-container--default .select2-search--inline .select2-search__field{background:transparent;border:none;outline:0;box-shadow:none;-webkit-appearance:textfield}.select2-container--default .select2-results>.select2-results__options{max-height:200px;overflow-y:auto}.select2-container--default .select2-results__option[role=group]{padding:0}.select2-container--default .select2-results__option[aria-disabled=true]{color:#999}.select2-container--default .select2-results__option[aria-selected=true]{background-color:#ddd}.select2-container--default .select2-results__option .select2-results__option{padding-left:10px}.select2-container--default .select2-results__option .select2-results__option .select2-results__group{padding-left:0}.select2-container--default .select2-results__option .select2-results__option .select2-results__option{margin-left:-10px;padding-left:20px}.select2-container--default .select2-results__option .select2-results__option .select2-results__option .select2-results__option{margin-left:-20px;padding-left:30px}.select2-container--default .select2-results__option .select2-results__option .select2-results__option .select2-results__option .select2-results__option{margin-left:-30px;padding-left:40px}.select2-container--default .select2-results__option .select2-results__option .select2-results__option .select2-results__option .select2-results__option .select2-results__option{margin-left:-40px;padding-left:50px}.select2-container--default .select2-results__option .select2-results__option .select2-results__option .select2-results__option .select2-results__option .select2-results__option .select2-results__option{margin-left:-50px;padding-left:60px}.select2-container--default .select2-results__group{cursor:default;display:block;padding:6px}.select2-container--default .select2-search--dropdown .select2-search__field{border:1px solid #aaa;outline:0}.select2-container--default .select2-results__option .select2-results__option[aria-selected=true]{background-color:#ddd}.select2-container--default .select2-results__option--highlighted[aria-selected]{background-color:#5897fb;color:white}.select2-container--default .select2-results__group{cursor:default;display:block;padding:6px}.select2-container--classic .select2-selection--single{background-color:#f7f7f7;border:1px solid #aaa;border-radius:4px;outline:0;background-image:-webkit-linear-gradient(top, #fff 50%, #eee 100%);background-image:-o-linear-gradient(top, #fff 50%, #eee 100%);background-image:linear-gradient(to bottom, #fff 50%, #eee 100%);background-repeat:repeat-x;filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#FFFFFFFF', endColorstr='#FFEEEEEE', GradientType=0)}.select2-container--classic .select2-selection--single:focus{border:1px solid #5897fb}.select2-container--classic .select2-selection--single .select2-selection__rendered{color:#444;line-height:28px}.select2-container--classic .select2-selection--single .select2-selection__clear{cursor:pointer;float:right;font-weight:bold;margin-right:10px}.select2-container--classic .select2-selection--single .select2-selection__placeholder{color:#999}.select2-container--classic .select2-selection--single .select2-selection__arrow{background-color:#ddd;border:none;border-left:1px solid #aaa;border-top-right-radius:4px;border-bottom-right-radius:4px;height:26px;position:absolute;top:1px;right:1px;width:20px;background-image:-webkit-linear-gradient(top, #eee 50%, #ccc 100%);background-image:-o-linear-gradient(top, #eee 50%, #ccc 100%);background-image:linear-gradient(to bottom, #eee 50%, #ccc 100%);background-repeat:repeat-x;filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#FFEEEEEE', endColorstr='#FFCCCCCC', GradientType=0)}.select2-container--classic .select2-selection--single .select2-selection__arrow b{border-color:#888 transparent transparent transparent;border-style:solid;border-width:5px 4px 0 4px;height:0;left:50%;margin-left:-4px;margin-top:-2px;position:absolute;top:50%;width:0}.select2-container--classic[dir="rtl"] .select2-selection--single .select2-selection__arrow{border:none;border-right:1px solid #aaa;border-radius:0;border-top-left-radius:4px;border-bottom-left-radius:4px;left:1px;right:auto}.select2-container--classic.select2-container--open .select2-selection--single{border:1px solid #5897fb}.select2-container--classic.select2-container--open .select2-selection--single .select2-selection__arrow{background:transparent;border:none}.select2-container--classic.select2-container--open .select2-selection--single .select2-selection__arrow b{border-color:transparent transparent #888 transparent;border-width:0 4px 5px 4px}.select2-container--classic.select2-container--open .select2-selection--single .select2-selection__arrow b{border-color:#888 transparent transparent transparent;border-width:5px 4px 0 4px}.select2-container--classic.select2-container--open .select2-selection--single .select2-selection__arrow b{border-color:transparent transparent #888 transparent;border-width:0 4px 5px 4px}.select2-container--classic .select2-selection--multiple{background-color:white;border:1px solid #aaa;border-radius:4px;cursor:text;outline:0}.select2-container--classic .select2-selection--multiple:focus{border:1px solid #5897fb}.select2-container--classic .select2-selection--multiple .select2-selection__rendered{list-style:none;margin:0;padding:0 5px}.select2-container--classic .select2-selection--multiple .select2-selection__clear{display:none}.select2-container--classic .select2-selection--multiple .select2-selection__choice{background-color:#e4e4e4;border:1px solid #aaa;border-radius:4px;cursor:default;float:left;margin-right:5px;margin-top:5px;padding:0 5px}.select2-container--classic .select2-selection--multiple .select2-selection__choice__remove{color:#888;cursor:pointer;display:inline-block;font-weight:bold;margin-right:2px}.select2-container--classic .select2-selection--multiple .select2-selection__choice__remove:hover{color:#555}.select2-container--classic[dir="rtl"] .select2-selection--multiple .select2-selection__choice{float:right}.select2-container--classic[dir="rtl"] .select2-selection--multiple .select2-selection__choice{margin-left:5px;margin-right:auto}.select2-container--classic[dir="rtl"] .select2-selection--multiple .select2-selection__choice__remove{margin-left:2px;margin-right:auto}.select2-container--classic.select2-container--open .select2-selection--multiple{border:1px solid #5897fb}.select2-container--classic.select2-container--open .select2-dropdown--above{border-bottom:none}.select2-container--classic.select2-container--open .select2-dropdown--below{border-top:none}.select2-container--classic .select2-results__option[role=group]{padding:0}.select2-container--classic .select2-results__option[aria-disabled=true]{color:grey}.select2-container--classic .select2-results__option--highlighted[aria-selected]{background-color:#3875d7;color:white}.select2-container--classic .select2-results__group{cursor:default;display:block;padding:6px}.select2-container--classic .select2-search--inline .select2-search__field{background:transparent;border:none;outline:0;box-shadow:none;-webkit-appearance:textfield}.select2-container--classic .select2-search--dropdown .select2-search__field{border:1px solid #aaa;outline:0}.select2-container--classic .select2-search--dropdown .select2-search__field{outline:0}.select2-container--classic .select2-dropdown{background-color:#fff;border:1px solid transparent}.select2-container--classic .select2-dropdown--above{border-bottom:none}.select2-container--classic .select2-dropdown--below{border-top:none}.select2-container--classic .select2-results > .select2-results__options{max-height:200px;overflow-y:auto}.select2-container--classic .select2-results__option[role=group]{padding:0}.select2-container--classic .select2-results__option[aria-disabled=true]{color:grey}.select2-container--classic .select2-results__option--highlighted[aria-selected]{background-color:#3875d7;color:#fff}.select2-container--classic .select2-results__group{cursor:default;display:block;padding:6px}
+"""
+
 HTML = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>DefectDojo Engagement Creator</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" />
+    <style>
+""" + SELECT2_CSS + """
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 800px; margin: auto; padding: 20px; }
+        label { display: block; margin-bottom: 5px; }
+        select, button { width: 100%; padding: 8px; margin-bottom: 10px; }
+        .modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); padding-top: 60px; }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 600px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: black; }
+        button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+    </style>
 </head>
 <body>
     <div class="container">
         <h1>Create VAPT Engagements</h1>
         <label for="products">Select Products:</label>
         <select id="products" multiple="multiple" style="width:100%"></select>
-        <button id="create-btn" class="btn btn-primary mt-3">Create VAPT Engagement</button>
+        <button id="create-btn">Create VAPT Engagement</button>
     </div>
 
-    <!-- Modal -->
-    <div class="modal fade" id="createModal" tabindex="-1" role="dialog">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Create Engagement</h5>
-                    <button type="button" class="close" data-dismiss="modal">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="quarter">Quarter:</label>
-                        <select id="quarter" class="form-control">
-                            <option>Q1</option>
-                            <option>Q2</option>
-                            <option>Q3</option>
-                            <option>Q4</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="year">Year:</label>
-                        <select id="year" class="form-control"></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="lead">Lead:</label>
-                        <select id="lead" style="width:100%"></select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="button" id="confirm-create" class="btn btn-primary">Confirm Create</button>
-                </div>
+    <!-- Create Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('createModal').style.display='none'">&times;</span>
+            <h2>Create Engagement</h2>
+            <label for="quarter">Quarter:</label>
+            <select id="quarter">
+                <option>Q1</option>
+                <option>Q2</option>
+                <option>Q3</option>
+                <option>Q4</option>
+            </select>
+            <label for="year">Year:</label>
+            <select id="year"></select>
+            <label for="lead">Lead:</label>
+            <select id="lead" style="width:100%"></select>
+            <div>
+                <label>Tests to create:</label>
+                <input type="checkbox" id="test_vapt" value="Pentest" checked> VAPT (Pentest)<br>
+                <input type="checkbox" id="test_api" value="API Scan"> API Test<br>
+                <input type="checkbox" id="test_burp" value="Burp Scan"> Burp Scan<br>
+                <input type="checkbox" id="test_manual" value="Manual Code Review"> Manual Code Review<br>
             </div>
+            <button onclick="document.getElementById('createModal').style.display='none'">Close</button>
+            <button id="confirm-create">Confirm Create</button>
+        </div>
+    </div>
+
+    <!-- Result Modal -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('resultModal').style.display='none'">&times;</span>
+            <h2>Results</h2>
+            <div id="result-body"></div>
+            <button onclick="document.getElementById('resultModal').style.display='none'">Close</button>
         </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
     <script>
         var currentYear = new Date().getFullYear();
@@ -123,7 +138,7 @@ HTML = """
                 alert('Please select at least one product');
                 return;
             }
-            $('#createModal').modal('show');
+            document.getElementById('createModal').style.display = 'block';
         });
 
         $('#confirm-create').click(function() {
@@ -131,26 +146,31 @@ HTML = """
             var quarter = $('#quarter').val();
             var year = $('#year').val();
             var lead = $('#lead').val();
+            var tests = [];
+            if ($('#test_vapt').prop('checked')) tests.push($('#test_vapt').val());
+            if ($('#test_api').prop('checked')) tests.push($('#test_api').val());
+            if ($('#test_burp').prop('checked')) tests.push($('#test_burp').val());
+            if ($('#test_manual').prop('checked')) tests.push($('#test_manual').val());
             if (!lead) {
                 alert('Please select a lead');
+                return;
+            }
+            if (tests.length === 0) {
+                alert('Please select at least one test');
                 return;
             }
             $.ajax({
                 url: '/create_engagements',
                 type: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({products: products, quarter: quarter, year: year, lead: lead}),
+                data: JSON.stringify({products: products, quarter: quarter, year: year, lead: lead, tests: tests}),
                 success: function(results) {
-                    $('#createModal').modal('hide');
-                    var msg = '';
-                    results.forEach(function(r) {
-                        if (r.success) {
-                            msg += `Created: ${r.name}\\n`;
-                        } else {
-                            msg += `Error: ${r.error}\\n`;
-                        }
-                    });
-                    alert(msg);
+                    document.getElementById('createModal').style.display = 'none';
+                    var msg = results.map(function(r) {
+                        return r.success ? 'Created: ' + r.name : 'Error: ' + r.error;
+                    }).join('<br>');
+                    $('#result-body').html(msg);
+                    document.getElementById('resultModal').style.display = 'block';
                 }
             });
         });
@@ -197,35 +217,54 @@ def create_engagements():
             continue
         prod_name = prod_resp.json()['name']
         name = f"{prod_name}-{data['quarter']}_{data['year']}"
+        # Check if engagement exists
+        eng_check = requests.get(f'{DEFECT_DOJO_URL}/api/v2/engagements/', params={'name': name, 'product': prod_id}, headers=HEADERS)
+        if eng_check.json().get('count', 0) > 0:
+            results.append({'success': False, 'error': f'Engagement {name} already exists for this product'})
+            continue
         payload = {
             'tags': ['vapt'],
             'name': name,
             'target_start': next_month_start.isoformat(),
             'target_end': next_month_end.isoformat(),
-            'status': 'Active',  # Changed to 'Active' as 'Not Started' is not a valid choice
+            'status': 'In Progress',
             'lead': data['lead'],
             'product': prod_id,
         }
         resp = requests.post(f'{DEFECT_DOJO_URL}/api/v2/engagements/', json=payload, headers=HEADERS)
-        if resp.status_code == 201:
-            eng = resp.json()
+        if resp.status_code != 201:
+            results.append({'success': False, 'error': resp.text})
+            continue
+        eng = resp.json()
+        test_errors = []
+        for test_name in data['tests']:
+            # Get or create test_type id
+            tt_resp = requests.get(f'{DEFECT_DOJO_URL}/api/v2/test_types/', params={'name': test_name, 'limit': 1}, headers=HEADERS)
+            if tt_resp.json().get('count', 0) == 0:
+                tt_create = requests.post(f'{DEFECT_DOJO_URL}/api/v2/test_types/', json={'name': test_name}, headers=HEADERS)
+                if tt_create.status_code == 201:
+                    tt_id = tt_create.json()['id']
+                else:
+                    test_errors.append(f'Failed to create test_type {test_name}: {tt_create.text}')
+                    continue
+            else:
+                tt_id = tt_resp.json()['results'][0]['id']
             test_payload = {
                 'engagement': eng['id'],
-                'test_type': 'Pentest',
+                'test_type': tt_id,
                 'target_start': payload['target_start'],
                 'target_end': payload['target_end'],
             }
             resp_test = requests.post(f'{DEFECT_DOJO_URL}/api/v2/tests/', json=test_payload, headers=HEADERS)
-            if resp_test.status_code == 201:
-                results.append({'success': True, 'name': name})
-            else:
-                results.append({'success': False, 'error': 'Engagement created but test failed: ' + resp_test.text})
+            if resp_test.status_code != 201:
+                test_errors.append(f'Failed to create test {test_name}: {resp_test.text}')
+        if test_errors:
+            results.append({'success': False, 'error': 'Engagement created but some tests failed: ' + '; '.join(test_errors), 'name': name})
         else:
-            results.append({'success': False, 'error': resp.text})
+            results.append({'success': True, 'name': name})
     return jsonify(results)
 
 def create_image():
-    # Simple green icon
     image = Image.new('RGB', (64, 64), color=(0, 255, 0))
     return image
 
@@ -244,10 +283,8 @@ if __name__ == '__main__':
     flask_thread.daemon = True
     flask_thread.start()
 
-    # Open browser initially
     webbrowser.open('http://127.0.0.1:5000')
 
-    # System tray
     icon = pystray.Icon('DefectDojo Creator')
     icon.icon = create_image()
     icon.menu = pystray.Menu(
