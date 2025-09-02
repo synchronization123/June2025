@@ -2,6 +2,7 @@
 import os
 import sys
 import subprocess
+import socket
 
 # --- Step 1: Ensure pip is installed ---
 try:
@@ -39,6 +40,15 @@ from PIL import Image, ImageDraw
 
 # Suppress HTTPS warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# --- Single Instance Check ---
+LOCK_PORT = 56789
+lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    lock_socket.bind(("127.0.0.1", LOCK_PORT))
+except OSError:
+    # Another instance is running
+    sys.exit(0)
 
 # --- Globals ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -95,10 +105,9 @@ def start_service():
     global flask_thread, service_running
     token = load_token()
     if not token:
-        return  # token required
+        return
 
     try:
-        # Download only if appsecvm missing or empty
         if not os.path.exists(APPSEC_DIR) or not os.listdir(APPSEC_DIR):
             headers = {"Authorization": f"Token {token}"}
             response = requests.get(URL, headers=headers, timeout=20, verify=False)
@@ -122,7 +131,6 @@ def start_service():
             chrome = webbrowser.get("chrome")
             chrome.open("http://127.0.0.1:5000")
         except:
-            # fallback to default browser
             webbrowser.open("http://127.0.0.1:5000")
 
         service_running = True
@@ -133,9 +141,10 @@ def start_service():
         hide_to_tray()
 
     except Exception:
-        pass  # silent failure
+        pass
 
 def stop_service():
+    """Kill tray + GUI + process completely"""
     global service_running
     service_running = False
     try:
@@ -228,7 +237,7 @@ def on_minimize(event):
 
 root.bind("<Unmap>", on_minimize)
 
-# Disable X button
+# Disable X button completely
 root.protocol("WM_DELETE_WINDOW", lambda: None)
 
 root.mainloop()
