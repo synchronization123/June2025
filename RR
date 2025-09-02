@@ -15,7 +15,7 @@ except ImportError:
         sys.exit(1)
 
 # --- Step 2: Ensure required modules ---
-REQUIRED = ["requests", "flask", "customtkinter", "pystray", "Pillow", "CTkMessagebox"]
+REQUIRED = ["requests", "flask", "customtkinter", "pystray", "Pillow"]
 
 for pkg in REQUIRED:
     try:
@@ -36,7 +36,6 @@ from flask import Flask, send_from_directory, abort
 import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
-from CTkMessagebox import CTkMessagebox   # ✅ correct import
 
 # Suppress HTTPS warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -96,15 +95,14 @@ def start_service():
     global flask_thread, service_running
     token = load_token()
     if not token:
-        CTkMessagebox(title="No Token", message="Please update the token first.", icon="warning")
-        return
+        return  # token required
 
     try:
+        # Download only if appsecvm missing or empty
         if not os.path.exists(APPSEC_DIR) or not os.listdir(APPSEC_DIR):
             headers = {"Authorization": f"Token {token}"}
             response = requests.get(URL, headers=headers, timeout=20, verify=False)
             if response.status_code != 200:
-                CTkMessagebox(title="Error", message=f"Download failed (HTTP {response.status_code}).", icon="cancel")
                 return
 
             with open(ZIP_FILE, "wb") as f:
@@ -119,19 +117,23 @@ def start_service():
             flask_thread = threading.Thread(target=run_flask, daemon=True)
             flask_thread.start()
 
-        webbrowser.open("http://127.0.0.1:5000")
+        # --- Always open in Chrome ---
+        try:
+            chrome = webbrowser.get("chrome")
+            chrome.open("http://127.0.0.1:5000")
+        except:
+            # fallback to default browser
+            webbrowser.open("http://127.0.0.1:5000")
 
         service_running = True
         btn_start.configure(state="disabled")
         btn_update.configure(state="disabled")
         btn_stop.configure(state="normal")
 
-        CTkMessagebox(title="Service", message="✅ Service started at http://127.0.0.1:5000", icon="check")
-
         hide_to_tray()
 
-    except Exception as e:
-        CTkMessagebox(title="Error", message=f"Failed to start service:\n{e}", icon="cancel")
+    except Exception:
+        pass  # silent failure
 
 def stop_service():
     global service_running
@@ -157,7 +159,6 @@ def update_token():
     token = ctk.CTkInputDialog(text="Enter new token:", title="Update Token").get_input()
     if token and token.strip():
         save_token(token.strip())
-        CTkMessagebox(title="Success", message="Token updated successfully.", icon="check")
         btn_start.configure(state="normal")
         btn_stop.configure(state="disabled")
 
