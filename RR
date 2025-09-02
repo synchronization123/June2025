@@ -14,19 +14,14 @@ except ImportError:
         print("❌ Could not install pip:", e)
         sys.exit(1)
 
-# --- Step 2: Try to import CustomTkinter early for messagebox ---
-try:
-    import customtkinter as ctk
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("blue")
-    def notify(msg):
-        try:
-            ctk.CTkMessagebox(title="Setup", message=msg)
-        except Exception:
-            print(msg)
-except ImportError:
-    # fallback if even customtkinter missing (we will install it later)
-    def notify(msg):
+# --- Step 2: Try early notify function ---
+def notify(msg):
+    try:
+        import customtkinter as ctk
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+        ctk.CTkMessagebox(title="Setup", message=msg)
+    except Exception:
         print(msg)
 
 # --- Step 3: Ensure required modules are installed ---
@@ -39,7 +34,7 @@ for pkg in REQUIRED:
         notify(f"📦 Installing missing module: {pkg} ... Please wait")
         subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
-# --- Step 4: Import all dependencies after installation ---
+# --- Step 4: Import all dependencies ---
 import json
 import threading
 import webbrowser
@@ -57,7 +52,7 @@ from PIL import Image, ImageDraw
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- Globals ---
-CURRENT_DIR = os.getcwd()
+CURRENT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))  # always current folder of script
 TOKEN_FILE = os.path.join(CURRENT_DIR, "token.json")
 ZIP_FILE = os.path.join(CURRENT_DIR, "appsecvm.zip")
 APPSEC_DIR = os.path.join(CURRENT_DIR, "appsecvm")
@@ -81,7 +76,6 @@ def serve_home():
 
 @app.route('/<path:filename>')
 def serve_files(filename):
-    """Serve any file from appsecvm directory."""
     full_path = os.path.join(APPSEC_DIR, filename)
     if os.path.exists(full_path):
         return send_from_directory(APPSEC_DIR, filename)
@@ -94,9 +88,13 @@ def run_flask():
 # --- Token handling ---
 def load_token():
     if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, "r") as f:
-            data = json.load(f)
-            return data.get("token", None)
+        try:
+            with open(TOKEN_FILE, "r") as f:
+                data = json.load(f)
+                token = data.get("token", "").strip()
+                return token if token else None
+        except Exception:
+            return None
     return None
 
 def save_token(token):
@@ -135,6 +133,7 @@ def start_service():
         service_running = True
         btn_start.configure(state="disabled")
         btn_update.configure(state="disabled")
+        btn_stop.configure(state="normal")
 
         hide_to_tray()
 
@@ -159,12 +158,15 @@ def stop_service():
         sys.exit(0)
 
 def update_token():
+    global btn_start, btn_stop
     if service_running:
         return
     token = ctk.CTkInputDialog(text="Enter new token:", title="Update Token").get_input()
-    if token:
-        save_token(token)
+    if token and token.strip():
+        save_token(token.strip())
         ctk.CTkMessagebox(title="Success", message="Token updated successfully.", icon="check")
+        btn_start.configure(state="normal")
+        btn_stop.configure(state="disabled")
 
 # --- Tray helpers ---
 def create_image(color="blue"):
@@ -205,14 +207,23 @@ root.title("⚡ Project Service")
 root.geometry("400x220")
 root.resizable(False, False)
 
-btn_start = ctk.CTkButton(root, text="🚀 Start Service", command=start_service, width=200, height=40, corner_radius=12)
+btn_start = ctk.CTkButton(root, text="🚀 Start Service", command=start_service,
+                          width=200, height=40, corner_radius=12)
 btn_start.pack(pady=10)
 
-btn_update = ctk.CTkButton(root, text="🔑 Update Token", command=update_token, width=200, height=40, corner_radius=12)
+btn_update = ctk.CTkButton(root, text="🔑 Update Token", command=update_token,
+                           width=200, height=40, corner_radius=12)
 btn_update.pack(pady=10)
 
-btn_stop = ctk.CTkButton(root, text="🛑 Stop Service", command=stop_service, width=200, height=40, fg_color="red", hover_color="#b30000", corner_radius=12)
+btn_stop = ctk.CTkButton(root, text="🛑 Stop Service", command=stop_service,
+                         width=200, height=40, fg_color="red",
+                         hover_color="#b30000", corner_radius=12)
 btn_stop.pack(pady=10)
+
+# --- Initial button states ---
+if not load_token():
+    btn_start.configure(state="disabled")
+    btn_stop.configure(state="disabled")
 
 # Minimize → tray
 def on_minimize(event):
