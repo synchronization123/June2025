@@ -1,28 +1,52 @@
-import base64
+import base64, random
 
-# Read original Project.pyw (readable one)
+# --- Read original code ---
 with open("Project_readable.pyw", "r", encoding="utf-8") as f:
     source = f.read()
 
-# First Base64 encode
+# --- Minify ---
+minified = []
+for line in source.splitlines():
+    line = line.strip()
+    if line and not line.startswith("#"):
+        minified.append(line)
+source = " ".join(minified)
+
+# --- Encode + reverse (real payload) ---
 encoded = base64.b64encode(source.encode("utf-8")).decode("utf-8")
+real_blob = encoded[::-1]
 
-# Second layer: reverse the Base64 string
-double_encoded = encoded[::-1]
+# --- Generate decoy blobs ---
+blobs = []
+for i in range(5):
+    junk = f"junk{i}{random.randint(10000,99999)}"
+    enc = base64.b64encode(junk.encode("utf-8")).decode("utf-8")
+    blobs.append(enc[::-1])
 
-# Build wrapper
-wrapper = f"""# Project.pyw (double-obfuscated)
-import base64
+# --- Insert real blob at hidden index ---
+insert_index = random.randint(0, len(blobs))
+blobs.insert(insert_index, real_blob)
 
-# Encoded and reversed code
-data = {double_encoded!r}
+# --- Obfuscate index with math expression ---
+expr = f"({insert_index*7}+{random.randint(1,9)})//7"
 
-# Decode: reverse back, then base64-decode, then exec
-exec(base64.b64decode(data[::-1]).decode("utf-8"))
-"""
+# --- Build wrapper ---
+wrapper = f'''
+import importlib
+part1=chr(98)+chr(97)+chr(115)+chr(101)
+part2=str((512//8))
+modname=part1+part2
+b=importlib.import_module(modname)
+dec=chr(98)+str((256//4))+"decode"
+d=getattr(b,dec)
+blobs={blobs!r}
+index={expr}
+data=blobs[index]
+code=d(data[::-1]).decode("utf-8")
+exec(compile(code,"<hidden>","exec"))
+'''
 
-# Write obfuscated Project.pyw
 with open("Project.pyw", "w", encoding="utf-8") as f:
-    f.write(wrapper)
+    f.write(wrapper.strip())
 
-print("✅ Double-obfuscated Project.pyw created")
+print("✅ Final stealth obfuscated Project.pyw created")
