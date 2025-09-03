@@ -1,20 +1,28 @@
 import base64
 
-# Read your original readable Project.pyw
+# Read original Project.pyw (readable one)
 with open("Project_readable.pyw", "r", encoding="utf-8") as f:
     source = f.read()
 
-# Encode to Base64
+# First Base64 encode
 encoded = base64.b64encode(source.encode("utf-8")).decode("utf-8")
 
+# Second layer: reverse the Base64 string
+double_encoded = encoded[::-1]
+
 # Build wrapper
-wrapper = f"""# Project.pyw (obfuscated)
+wrapper = f"""# Project.pyw (double-obfuscated)
 import base64
-exec(base64.b64decode({encoded!r}).decode("utf-8"))
+
+# Encoded and reversed code
+data = {double_encoded!r}
+
+# Decode: reverse back, then base64-decode, then exec
+exec(base64.b64decode(data[::-1]).decode("utf-8"))
 """
 
-# Write final obfuscated Project.pyw
+# Write obfuscated Project.pyw
 with open("Project.pyw", "w", encoding="utf-8") as f:
     f.write(wrapper)
 
-print("✅ Obfuscated Project.pyw created")
+print("✅ Double-obfuscated Project.pyw created")
