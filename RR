@@ -4,7 +4,7 @@ import base64, random
 with open("Project_readable.pyw", "r", encoding="utf-8") as f:
     source = f.read()
 
-# --- Minify ---
+# --- Minify (remove comments & blank lines) ---
 minified = []
 for line in source.splitlines():
     line = line.strip()
@@ -18,36 +18,36 @@ real_blob = encoded[::-1]
 
 # --- Generate decoy blobs ---
 blobs = []
-for i in range(5):
+for i in range(4):
     junk = f"junk{i}{random.randint(10000,99999)}"
     enc = base64.b64encode(junk.encode("utf-8")).decode("utf-8")
     blobs.append(enc[::-1])
 
-# --- Insert real blob at random index ---
+# --- Insert real blob ---
 insert_index = random.randint(0, len(blobs))
 blobs.insert(insert_index, real_blob)
 
-# --- Safe obfuscation expression (always valid) ---
-# Example: (insert_index*10)//10
+# --- Safe index obfuscation (always valid) ---
 expr = f"({insert_index}*10)//10"
 
 # --- Build wrapper ---
 wrapper = f'''
 import importlib
-part1=chr(98)+chr(97)+chr(115)+chr(101)
-part2=str((512//8))
-modname=part1+part2
-b=importlib.import_module(modname)
+p1=chr(98)+chr(97)+chr(115)+chr(101)
+p2=str((512//8))
+m=p1+p2
+b=importlib.import_module(m)
 dec=chr(98)+str((256//4))+"decode"
 d=getattr(b,dec)
 blobs={blobs!r}
-index={expr}
-data=blobs[index]
+idx={expr}
+data=blobs[idx]
 code=d(data[::-1]).decode("utf-8")
-exec(compile(code,"<hidden>","exec"))
+exec(compile(code,"<x>", "exec"))
 '''
 
+# --- Write obfuscated Project.pyw ---
 with open("Project.pyw", "w", encoding="utf-8") as f:
     f.write(wrapper.strip())
 
-print("✅ Final stealth obfuscated Project.pyw created (safe index)")
+print("✅ Obfuscated Project.pyw created successfully")
