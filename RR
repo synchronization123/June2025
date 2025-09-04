@@ -2,23 +2,25 @@ import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 
+# --- CONFIG ---
 BASE_URL = "https://jenkins.abf.com"
-TOKEN = "jsjjdjdjd"   # your Jenkins token
+USERNAME = "your_username"        # 🔹 Replace with your Jenkins username
+TOKEN = "jsjjdjdjd"               # 🔹 API token (used as password)
 JOB_PATH = "job/crm/job/develop{}/artifact/AllJiraIds/*view*/"
 START_ID, END_ID = 1, 170
 OUTPUT_FILE = "jenkins_jira_ids.xlsx"
 
+# --- SESSION SETUP ---
 session = requests.Session()
-session.headers.update({
-    "Authorization": f"Bearer {TOKEN}",
-    "User-Agent": "JenkinsJiraFetcher/1.0"
-})
-session.verify = False   # set True if Jenkins has valid SSL
+session.auth = (USERNAME, TOKEN)  # Basic auth: user + token
+session.headers.update({"User-Agent": "JenkinsJiraFetcher/1.0"})
+session.verify = False  # Set True if Jenkins has valid SSL certificate
 
 def build_url(version_id: int) -> str:
     return f"{BASE_URL}/{JOB_PATH.format(version_id)}"
 
 def parse_lines(resp: requests.Response):
+    """Extract Jira IDs from Jenkins artifact page"""
     ctype = resp.headers.get("Content-Type", "")
     if "text/plain" in ctype:
         return [ln.strip() for ln in resp.text.splitlines() if ln.strip()]
@@ -33,7 +35,7 @@ for vid in range(START_ID, END_ID + 1):
     try:
         r = session.get(url, timeout=20)
         if r.status_code != 200:
-            print(f"[skip] develop{vid}: {r.status_code}")
+            print(f"[skip] develop{vid}: HTTP {r.status_code}")
             continue
         lines = parse_lines(r)
         for ln in lines:
@@ -42,6 +44,7 @@ for vid in range(START_ID, END_ID + 1):
     except Exception as e:
         print(f"[error] develop{vid}: {e}")
 
+# --- SAVE TO EXCEL ---
 df = pd.DataFrame(rows, columns=["Id", "Jira id"])
 df.to_excel(OUTPUT_FILE, index=False)
-print(f"\nDone. Saved {len(df)} rows into {OUTPUT_FILE}")
+print(f"\nDone ✅ Saved {len(df)} rows into {OUTPUT_FILE}")
